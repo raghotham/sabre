@@ -1,4 +1,4 @@
-"""Slash command handler for LLMVM2 Client"""
+"""Slash command handler for SABRE Client"""
 from typing import Dict
 from .base import BaseCommand, CommandResult
 from .help import HelpCommand
@@ -8,7 +8,7 @@ from .helpers import HelpersCommand
 
 
 class SlashCommandHandler:
-    """Handler for slash commands in llmvm2 client"""
+    """Handler for slash commands in sabre client"""
 
     def __init__(self, client):
         self.client = client

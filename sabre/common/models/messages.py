@@ -1,5 +1,5 @@
 """
-Message data models for LLMVM2.
+Message data models for SABRE.
 
 Simple, clean message representation:
 - Content: Base class for different content types

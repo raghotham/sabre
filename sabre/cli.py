@@ -1,5 +1,5 @@
 """
-LLMVM2 CLI Entry Point.
+SABRE CLI Entry Point.
 
 Starts the server in background and launches the client.
 """
@@ -12,19 +12,17 @@ import sys
 import time
 from pathlib import Path
 
-
-def get_log_dir():
-    """Get logs directory path (at repository root)"""
-    return Path(__file__).parent.parent / "logs"
-
-
-def get_pid_file():
-    """Get PID file path"""
-    return get_log_dir() / "server.pid"
+from sabre.common.paths import get_logs_dir, get_pid_file, ensure_dirs, migrate_from_old_structure
 
 
 def start_server():
-    """Start the LLMVM2 server in background"""
+    """Start the SABRE server in background"""
+    # Migrate from old structure if needed
+    migrate_from_old_structure()
+
+    # Ensure all directories exist
+    ensure_dirs()
+
     # Get API key
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
@@ -39,11 +37,10 @@ def start_server():
     # Get optional configuration from environment
     base_url = os.getenv("OPENAI_BASE_URL")
     model = os.getenv("OPENAI_MODEL")
-    port = os.getenv("LLMVM_PORT", "8011")
+    port = os.getenv("PORT", "8011")
 
-    # Ensure logs directory exists
-    log_dir = get_log_dir()
-    log_dir.mkdir(exist_ok=True)
+    # Get logs directory
+    log_dir = get_logs_dir()
     server_log = log_dir / "server.log"
 
     # Start server process
@@ -55,7 +52,7 @@ def start_server():
         env["OPENAI_BASE_URL"] = base_url
     if model:
         env["OPENAI_MODEL"] = model
-    env["LLMVM_PORT"] = port
+    env["PORT"] = port
 
     # Open log file (keep it open for subprocess)
     print("Starting server...")
@@ -63,7 +60,7 @@ def start_server():
 
     try:
         server_process = subprocess.Popen(
-            [sys.executable, "-m", "llmvm2.server"],
+            [sys.executable, "-m", "sabre.server"],
             env=env,
             stdout=log_f,
             stderr=subprocess.STDOUT,
@@ -123,7 +120,7 @@ def start_server():
 
 
 def stop_server():
-    """Stop the LLMVM2 server using PID file or process search"""
+    """Stop the SABRE server using PID file or process search"""
     pid_file = get_pid_file()
     pid = None
 
@@ -139,7 +136,7 @@ def stop_server():
     if pid is None:
         try:
             result = subprocess.run(
-                ["pgrep", "-f", "llmvm2.server"],
+                ["pgrep", "-f", "sabre.server"],
                 capture_output=True,
                 text=True
             )
@@ -194,7 +191,7 @@ async def run_client():
 
 def main():
     """Main entry point"""
-    parser = argparse.ArgumentParser(description="LLMVM2 CLI")
+    parser = argparse.ArgumentParser(description="SABRE CLI")
     parser.add_argument("--stop", action="store_true", help="Stop the running server")
     args = parser.parse_args()
 

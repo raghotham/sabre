@@ -1,5 +1,5 @@
 """
-LLMVM2 Executors
+SABRE Executors
 
 Only one executor: ResponseExecutor (OpenAI Responses API)
 """

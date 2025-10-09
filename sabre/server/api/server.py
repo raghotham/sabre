@@ -1,5 +1,5 @@
 """
-FastAPI server for llmvm2.
+FastAPI server for sabre.
 
 Simple WebSocket-based server that handles chat messages and streams back responses.
 """
@@ -89,13 +89,17 @@ class ConnectionManager:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup/shutdown."""
-    # Create logs directory
-    import os
-    log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "logs")
-    os.makedirs(log_dir, exist_ok=True)
+    from sabre.common.paths import get_logs_dir, ensure_dirs
+
+    # Ensure directories exist
+    ensure_dirs()
+
+    # Get logs directory
+    log_dir = get_logs_dir()
 
     # Configure logging to both file and console
     # Use LOG_LEVEL env var (DEBUG, INFO, WARNING, ERROR) or default to INFO
+    import os
     log_level_name = os.getenv("LOG_LEVEL", "INFO").upper()
     log_level = getattr(logging, log_level_name, logging.INFO)
 
@@ -104,17 +108,17 @@ async def lifespan(app: FastAPI):
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[
             logging.StreamHandler(),
-            logging.FileHandler(os.path.join(log_dir, "server.log"))
+            logging.FileHandler(log_dir / "server.log")
         ]
     )
-    logger.info("Starting llmvm2 server...")
+    logger.info("Starting sabre server...")
     yield
-    logger.info("Shutting down llmvm2 server...")
+    logger.info("Shutting down sabre server...")
 
 
 # Create FastAPI app
 app = FastAPI(
-    title="llmvm2 API",
+    title="sabre API",
     description="Simple chat API with execution tree tracking",
     version="0.1.0",
     lifespan=lifespan,
@@ -136,7 +140,7 @@ manager = ConnectionManager()
 @app.get("/")
 async def root():
     """Health check endpoint."""
-    return {"status": "ok", "service": "llmvm2"}
+    return {"status": "ok", "service": "sabre"}
 
 
 @app.get("/health")
@@ -152,11 +156,10 @@ async def health():
 @app.get("/files/{conversation_id}/{filename}")
 async def serve_file(conversation_id: str, filename: str):
     """Serve files generated during conversation (e.g., matplotlib images)."""
-    import os
-    from pathlib import Path
+    from sabre.common.paths import get_files_dir
 
-    # Files are stored in .llmvm2/files/{conversation_id}/
-    files_dir = Path.home() / ".llmvm2" / "files" / conversation_id
+    # Files are stored in XDG_DATA_HOME/sabre/files/{conversation_id}/
+    files_dir = get_files_dir(conversation_id)
     file_path = files_dir / filename
 
     if not file_path.exists():
@@ -354,7 +357,7 @@ if __name__ == "__main__":
 
     # Run server
     uvicorn.run(
-        "llmvm2.server.api.server:app",
+        "sabre.server.api.server:app",
         host="0.0.0.0",
         port=8011,
         reload=True,
