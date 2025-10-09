@@ -1,0 +1,66 @@
+exclude: 'build/'
+
+default_language_version:
+    python: python3.12
+
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0  # Latest stable version
+    hooks:
+    -   id: check-merge-conflict
+        args: ['--assume-in-merge']
+    -   id: trailing-whitespace
+        exclude: '\.py$'  # Exclude Python files as Ruff already handles them
+    -   id: check-added-large-files
+        args: ['--maxkb=1000']
+    -   id: end-of-file-fixer
+        exclude: '^(.*\.svg|.*\.md)$'
+    -   id: no-commit-to-branch
+    -   id: check-yaml
+        args: ["--unsafe"]
+    -   id: detect-private-key
+    -   id: mixed-line-ending
+        args: [--fix=lf] # Forces to replace line ending by LF (line feed)
+    -   id: check-executables-have-shebangs
+    -   id: check-json
+    -   id: check-shebang-scripts-are-executable
+    -   id: check-symlinks
+    -   id: check-toml
+
+-   repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.2
+    hooks:
+    -   id: ruff
+        args: [ --fix ]
+        exclude: ^llama_stack/strong_typing/.*$
+    -   id: ruff-format
+
+-   repo: https://github.com/adamchainz/blacken-docs
+    rev: 1.19.1
+    hooks:
+    -   id: blacken-docs
+        additional_dependencies:
+        - black==24.3.0
+
+-   repo: local
+    hooks:
+    -   id: check-imports
+        name: Check for circular imports
+        entry: uv run python -c "from cc_vec import search, stats, fetch; print('✓ Import check passed')"
+        language: system
+        pass_filenames: false
+        always_run: true
+
+-   repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.7.20
+    hooks:
+    -   id: uv-lock
+
+ci:
+    autofix_commit_msg: 🎨 [pre-commit.ci] Auto format from pre-commit.com hooks
+    autoupdate_commit_msg: ⬆ [pre-commit.ci] pre-commit autoupdate
+    autofix_prs: true
+    autoupdate_branch: ''
+    autoupdate_schedule: weekly
+    skip: []
+    submodules: false

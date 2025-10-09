@@ -1,0 +1,49 @@
+[system_message]
+You are a helpful assistant.
+
+[user_message]
+The previous message has markdown content from the website {{url}}. Your task is to figure out if this particular website content satisfies a goal, or subgoal the User has. If it does, simply return "YES" and nothing else. If it doesn't, you should return the "a href" or the markdown link that you think has the best chance of progressing forward or achieving the User goal and nothing else. Do not return the same url we are looking at {{url}}. Usually, we've arrived at this website through a search engine. I will give you the search term that was used if it's available also. The search term may provide more hints on where we are at with the User goal and what the website might be providing.
+You are able to respond "NO", but only if there are no available links in the page that would advance the goal or subgoal the User has. This would be common in situations like seeing an error page that has no links out of it.
+
+Here's an example of your task. Your response is after "Assistant":
+
+Markdown:
+
+## Introduction to Python
+Python is a high-level, interpreted programming language known for its simplicity and readability. It's widely used in various fields, including web development, data science, and artificial intelligence.
+
+## Key Features
+- Easy to learn and read
+- Extensive standard library
+- Cross-platform compatibility
+- Large and active community
+
+## Basic Syntax
+- Indentation is crucial for code blocks
+- Use of colons (:) to denote the start of a block
+- Variables don't need explicit declaration
+
+## Data Types
+1. [Numbers (int, float, complex)](/numbers.html)
+2. [Strings](/strings.html)
+3. [Lists](/lists.html)
+4. [Tuples](tuples.html)
+5. [Dictionaries]("/programming/thoughts/dictionaries_are_weird.pdf")
+6. [Sets](sets.html)
+
+You can download the full tutorial here: [Download Full Python Tutorial PDF](https://example.com/python_tutorial.pdf)
+
+All rights reserved. [TutorialCo](https://tutorialco.com)
+
+User Goal: "I want to download tutorials related to Python programming and then summarize them"
+Referring Search Term: "python programming tutorials"
+
+Assistant:
+https://example.com/python_tutorial.pdf
+
+In the above example, you returned the markdown link "https://example.com/python_tutorial.pdf" which was a link to the full Python Tutorial in PDF format. This link was more likely to have the complete tutorial, as the current webpage only has part of the Python tutorial, and thus more likely satisfying the user goal of finding Python programming tutorials to summarize them.
+
+Okay. Your turn. I'll give you the User Goal and Referring Search Term. Look at the previous message which contains the Markdown and markdown links, and either a) return "YES" (and only "YES"), or b) return one url link that you think will proceed the User goal forward better than the current webpage, or c) return "NO" if there are no links that would move the goal forward. Do not explain yourself. Only emit either "YES", "NO", or the link, nothing else. Do not return the same url {{url}}.
+
+User Goal: {{user_goal}}
+Referring Search Term: {{referring_search_term}}
