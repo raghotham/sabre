@@ -7,7 +7,7 @@ Usage:
 
 Environment variables:
     SABRE_HOME: Override base directory for debugging (default: ~/.local)
-    LLMVM_PORT: Port to run server on (default: 8011)
+    PORT: Port to run server on (default: 8011)
     OPENAI_API_KEY: OpenAI API key
     OPENAI_BASE_URL: Custom OpenAI base URL (optional)
     OPENAI_MODEL: Default model (optional, default: gpt-4o)
@@ -28,7 +28,7 @@ def main():
     ensure_dirs()
 
     # Get port from environment or use default
-    port = int(os.getenv("LLMVM_PORT", "8011"))
+    port = int(os.getenv("PORT", "8011"))
 
     # Setup logging to file
     log_dir = get_logs_dir()

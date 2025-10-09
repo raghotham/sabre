@@ -37,7 +37,7 @@ def start_server():
     # Get optional configuration from environment
     base_url = os.getenv("OPENAI_BASE_URL")
     model = os.getenv("OPENAI_MODEL")
-    port = os.getenv("LLMVM_PORT", "8011")
+    port = os.getenv("PORT", "8011")
 
     # Get logs directory
     log_dir = get_logs_dir()
@@ -52,7 +52,7 @@ def start_server():
         env["OPENAI_BASE_URL"] = base_url
     if model:
         env["OPENAI_MODEL"] = model
-    env["LLMVM_PORT"] = port
+    env["PORT"] = port
 
     # Open log file (keep it open for subprocess)
     print("Starting server...")

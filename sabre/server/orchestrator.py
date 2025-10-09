@@ -802,8 +802,8 @@ class Orchestrator:
         file_path = files_dir / filename
         file_path.write_bytes(image_bytes)
 
-        # Generate URL (assumes server on localhost:8011 or LLMVM_PORT)
-        port = os.getenv("LLMVM_PORT", "8011")
+        # Generate URL (assumes server on localhost:8011 or PORT)
+        port = os.getenv("PORT", "8011")
         url = f"http://localhost:{port}/files/{conversation_id}/{filename}"
         logger.info(f"Saved image to {file_path}, accessible at {url}")
 

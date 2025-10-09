@@ -821,7 +821,7 @@ async def main():
     )
 
     # Get server port from environment
-    port = os.getenv("LLMVM_PORT", "8011")
+    port = os.getenv("PORT", "8011")
     server_url = f"ws://localhost:{port}/message"
 
     # Detect theme (could be made configurable)
