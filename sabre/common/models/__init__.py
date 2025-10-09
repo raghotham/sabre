@@ -1,5 +1,5 @@
 """
-LLMVM2 Data Models
+SABRE Data Models
 
 Clean, simple data models for messages, execution tracking, and events.
 """

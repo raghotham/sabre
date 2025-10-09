@@ -1,5 +1,5 @@
 """
-Minimal LLMVM2 Client with prompt_toolkit rendering.
+Minimal SABRE Client with prompt_toolkit rendering.
 
 Connects to server via WebSocket and provides chat interface with tree visualization.
 """
@@ -518,7 +518,7 @@ class Client:
 
     async def run(self):
         """Main client loop"""
-        self.print('\n<b><style fg="ansicyan">LLMVM2 Client</style></b>')
+        self.print('\n<b><style fg="ansicyan">SABRE Client</style></b>')
         self.print(f'Connecting to {self.server_url}...\n')
 
         try:

@@ -1,5 +1,5 @@
 """
-LLMVM2 Client Entry Point
+SABRE Client Entry Point
 
 Usage:
     python -m sabre.client
@@ -10,7 +10,7 @@ import asyncio
 
 
 def main():
-    """Main entry point for LLMVM2 client"""
+    """Main entry point for SABRE client"""
     from sabre.client.client import main as client_main
     sys.exit(asyncio.run(client_main()))
 

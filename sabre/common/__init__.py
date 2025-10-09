@@ -1,5 +1,5 @@
 """
-LLMVM2 Common - Shared components
+SABRE Common - Shared components
 
 Models, executors, and utilities shared between client and server.
 """

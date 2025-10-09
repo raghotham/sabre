@@ -1,4 +1,4 @@
-"""Slash command handler for LLMVM2 Client"""
+"""Slash command handler for SABRE Client"""
 from typing import Dict
 from .base import BaseCommand, CommandResult
 from .help import HelpCommand
