@@ -1,5 +1,5 @@
 """
-Prompt loader for llmvm2.
+Prompt loader for sabre.
 
 Loads and populates prompt templates with variable substitutions.
 Supports:
@@ -18,7 +18,7 @@ class PromptLoader:
     def load(
         prompt_name: str,
         template: Dict[str, Any] | None = None,
-        module_path: str = 'llmvm2.server.prompts'
+        module_path: str = 'sabre.server.prompts'
     ) -> Dict[str, str]:
         """
         Load and populate a prompt template.
@@ -74,25 +74,25 @@ class PromptLoader:
 
         Args:
             prompt_name: Prompt filename
-            module_path: Module path (e.g., 'llmvm2.server.prompts')
+            module_path: Module path (e.g., 'sabre.server.prompts')
 
         Returns:
             Absolute path to prompt file
         """
         # Convert module path to file path
-        # e.g., 'llmvm2.server.prompts' -> 'llmvm2/server/prompts'
+        # e.g., 'sabre.server.prompts' -> 'sabre/server/prompts'
         parts = module_path.split('.')
 
-        # Get the base directory (where llmvm2 package is)
+        # Get the base directory (where sabre package is)
         current_file = os.path.abspath(__file__)
-        # Go up from: llmvm2/common/utils/prompt_loader.py
-        llmvm2_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
+        # Go up from: sabre/common/utils/prompt_loader.py
+        sabre_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
 
         # Build path to prompts directory
-        prompt_dir = llmvm2_root
+        prompt_dir = sabre_root
         for part in parts:
-            if part == 'llmvm2':
-                continue  # Already at llmvm2_root
+            if part == 'sabre':
+                continue  # Already at sabre_root
             prompt_dir = os.path.join(prompt_dir, part)
 
         prompt_file = os.path.join(prompt_dir, prompt_name)
@@ -138,7 +138,7 @@ class PromptLoader:
             # Evaluate expression
             try:
                 # Make common imports and stubs available in eval context
-                # Stubs for llmvm compatibility (llmvm2 doesn't have these)
+                # Stubs for llmvm compatibility (sabre doesn't have these)
                 class ContainerStub:
                     def get_config_variable(self, key, env_var, default=''):
                         return os.path.expanduser(os.getenv(env_var, default))
@@ -153,7 +153,7 @@ class PromptLoader:
                     'os': os,
                     'Container': lambda: ContainerStub(),  # Returns instance when called
                     'tzlocal': TzLocalStub,
-                    'thread_id': 'default',  # llmvm2 doesn't use thread_id
+                    'thread_id': 'default',  # sabre doesn't use thread_id
                     'str': str,  # Make str available
                 }
                 result = str(eval(expr, eval_context))

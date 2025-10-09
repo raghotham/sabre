@@ -2,8 +2,8 @@
 LLMVM2 Client Entry Point
 
 Usage:
-    python -m llmvm2.client
-    uv run llmvm2-client
+    python -m sabre.client
+    uv run sabre-client
 """
 import sys
 import asyncio

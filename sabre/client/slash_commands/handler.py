@@ -8,7 +8,7 @@ from .helpers import HelpersCommand
 
 
 class SlashCommandHandler:
-    """Handler for slash commands in llmvm2 client"""
+    """Handler for slash commands in sabre client"""
 
     def __init__(self, client):
         self.client = client

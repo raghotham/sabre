@@ -1,7 +1,7 @@
 """
 Response Executor for OpenAI Responses API.
 
-This is the ONLY executor in llmvm2. It's clean, simple, and focused.
+This is the ONLY executor in sabre. It's clean, simple, and focused.
 
 Key features:
 - Streaming support

@@ -1,4 +1,4 @@
-"""Slash commands for llmvm2 client"""
+"""Slash commands for sabre client"""
 
 from .base import BaseCommand, CommandResult
 from .handler import SlashCommandHandler
