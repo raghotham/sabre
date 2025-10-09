@@ -1,7 +1,7 @@
 [project]
 name = "sabre"
 version = "0.1.0"
-description = "SABRE - Self-Amplifying Backtracking Recursive Execution"
+description = "SABRE - Smart Agent Based on Recursive Execution"
 authors = [
     {name = "9600 devs", email = "contact@9600.dev"}
 ]

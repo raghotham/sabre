@@ -1,6 +1,6 @@
 # SABRE
 
-**Self-Amplifying Backtracking Recursive Execution**
+**Smart Agent Based on Recursive Execution**
 
 Persona-driven AI agent with:
 - Recursive execution engine with error correction
