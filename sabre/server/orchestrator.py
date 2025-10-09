@@ -424,7 +424,7 @@ class Orchestrator:
         orchestrator.run() with a NEW conversation.
 
         Images (matplotlib figures) are handled with dual operation:
-        1. Saved to disk at ~/.llmvm2/files/{conversation_id}/ for serving
+        1. Saved to disk at XDG_DATA_HOME/sabre/files/{conversation_id}/ for serving
         2. Markdown URLs appended to output_text for LLM to reference
         3. ImageContent with base64 kept in content_list (for Files API upload)
 
@@ -789,11 +789,12 @@ class Orchestrator:
         Returns:
             URL path to access the file
         """
-        from pathlib import Path
+        from sabre.common.paths import get_files_dir
         import base64
+        import os
 
-        # Create directory: ~/.llmvm2/files/{conversation_id}/
-        files_dir = Path.home() / ".llmvm2" / "files" / conversation_id
+        # Create directory: XDG_DATA_HOME/sabre/files/{conversation_id}/
+        files_dir = get_files_dir(conversation_id)
         files_dir.mkdir(parents=True, exist_ok=True)
 
         # Decode and save image
@@ -801,8 +802,9 @@ class Orchestrator:
         file_path = files_dir / filename
         file_path.write_bytes(image_bytes)
 
-        # Generate URL (assumes server on localhost:8011)
-        url = f"http://localhost:8011/files/{conversation_id}/{filename}"
+        # Generate URL (assumes server on localhost:8011 or LLMVM_PORT)
+        port = os.getenv("LLMVM_PORT", "8011")
+        url = f"http://localhost:{port}/files/{conversation_id}/{filename}"
         logger.info(f"Saved image to {file_path}, accessible at {url}")
 
         return url

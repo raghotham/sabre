@@ -13,6 +13,7 @@ download/
 backup/
 logs/
 cache/
+local/
 prompt_backup/
 faiss/
 geckodriver.log

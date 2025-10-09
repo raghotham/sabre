@@ -57,11 +57,12 @@ class Client:
     def __init__(self, server_url: str = "ws://localhost:8011/message", theme: str = "dark", history_file: str | None = None):
         self.server_url = server_url
 
-        # Setup history (at repository root)
+        # Setup history using XDG-compliant paths
         if history_file is None:
-            log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "logs")
-            os.makedirs(log_dir, exist_ok=True)
-            history_file = os.path.join(log_dir, "history")
+            from sabre.common.paths import get_logs_dir, ensure_dirs
+            ensure_dirs()
+            log_dir = get_logs_dir()
+            history_file = str(log_dir / "history")
 
         # Set up prompt styling based on theme
         self.theme = theme
@@ -804,16 +805,18 @@ class Client:
 
 async def main():
     """Entry point for client"""
-    # Setup logging (at repository root)
-    log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "logs")
-    os.makedirs(log_dir, exist_ok=True)
+    from sabre.common.paths import get_logs_dir, ensure_dirs
+
+    # Setup logging using XDG-compliant paths
+    ensure_dirs()
+    log_dir = get_logs_dir()
 
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[
             # Only write to file, not to screen
-            logging.FileHandler(os.path.join(log_dir, "client.log"))
+            logging.FileHandler(log_dir / "client.log")
         ]
     )
 
