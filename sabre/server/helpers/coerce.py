@@ -3,7 +3,7 @@ Coerce helper - type coercion using LLM.
 
 Allows code to convert expressions to specific types using LLM understanding.
 """
-import asyncio
+
 import logging
 from typing import Any, Union, Type, Callable
 
@@ -51,6 +51,7 @@ class Coerce:
 
         # Run async coercion
         from sabre.server.helpers.llm_call import run_async_from_sync
+
         return run_async_from_sync(self.execute(expr, type_name))
 
     async def execute(self, expr: Any, type_name: str, max_retries: int = 3) -> Any:
@@ -67,11 +68,11 @@ class Coerce:
         """
         # Load prompt
         prompt = PromptLoader.load(
-            'coerce.prompt',
+            "coerce.prompt",
             template={
-                'string': str(expr),
-                'type': type_name,
-            }
+                "string": str(expr),
+                "type": type_name,
+            },
         )
 
         # Combine system_message and user_message as instructions
@@ -80,9 +81,7 @@ class Coerce:
         # Get or create OpenAI client (respects env vars)
         client = self.get_openai_client()
 
-        conversation = await client.conversations.create(
-            metadata={"type": "coerce", "target_type": type_name}
-        )
+        conversation = await client.conversations.create(metadata={"type": "coerce", "target_type": type_name})
 
         # Send initial message with instructions
         await client.responses.create(
@@ -105,10 +104,7 @@ class Coerce:
             logger.info(f"coerce attempt {attempt + 1}/{max_retries}")
 
             tree = ExecutionTree()
-            node = tree.push(
-                ExecutionNodeType.NESTED_LLM_CALL,
-                metadata={"helper": "coerce", "attempt": attempt + 1}
-            )
+            tree.push(ExecutionNodeType.NESTED_LLM_CALL, metadata={"helper": "coerce", "attempt": attempt + 1})
 
             try:
                 # Call LLM to perform coercion (pass instructions on every call)
@@ -128,6 +124,7 @@ class Coerce:
 
                 # Try to parse as Python literal
                 import ast
+
                 try:
                     return ast.literal_eval(result_text)
                 except (ValueError, SyntaxError):

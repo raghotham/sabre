@@ -1,4 +1,5 @@
 """Base classes for slash commands"""
+
 from dataclasses import dataclass
 from typing import Optional, Any, Dict
 
@@ -6,6 +7,7 @@ from typing import Optional, Any, Dict
 @dataclass
 class CommandResult:
     """Result of executing a slash command"""
+
     success: bool
     message: str
     data: Optional[Dict[str, Any]] = None

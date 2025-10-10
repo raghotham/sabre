@@ -12,6 +12,7 @@ Environment variables:
     OPENAI_BASE_URL: Custom OpenAI base URL (optional)
     OPENAI_MODEL: Default model (optional, default: gpt-4o)
 """
+
 import logging
 import os
 import uvicorn
@@ -40,8 +41,8 @@ def main():
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[
             logging.FileHandler(log_file),
-            logging.StreamHandler()  # Also log to console
-        ]
+            logging.StreamHandler(),  # Also log to console
+        ],
     )
 
     logging.info(f"Starting sabre server on port {port}")
@@ -49,16 +50,12 @@ def main():
     # Configure uvicorn logging to match application format
     log_config = uvicorn.config.LOGGING_CONFIG
     log_config["formatters"]["default"]["fmt"] = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    log_config["formatters"]["access"]["fmt"] = '%(asctime)s - %(name)s - %(levelname)s - %(client_addr)s - "%(request_line)s" %(status_code)s'
+    log_config["formatters"]["access"]["fmt"] = (
+        '%(asctime)s - %(name)s - %(levelname)s - %(client_addr)s - "%(request_line)s" %(status_code)s'
+    )
 
     # Run server
-    uvicorn.run(
-        "sabre.server.api.server:app",
-        host="0.0.0.0",
-        port=port,
-        log_level="info",
-        log_config=log_config
-    )
+    uvicorn.run("sabre.server.api.server:app", host="0.0.0.0", port=port, log_level="info", log_config=log_config)
 
 
 if __name__ == "__main__":

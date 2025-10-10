@@ -11,6 +11,7 @@ Environment variables:
 - XDG_STATE_HOME: User state directory (default: ~/.local/state)
 - XDG_CACHE_HOME: User cache directory (default: ~/.cache)
 """
+
 import os
 import logging
 from pathlib import Path
@@ -184,6 +185,7 @@ class SabrePaths:
 
 
 # Convenience functions for common operations
+
 
 def get_logs_dir() -> Path:
     """Get logs directory."""

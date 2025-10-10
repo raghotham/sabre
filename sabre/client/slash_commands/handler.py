@@ -1,4 +1,5 @@
 """Slash command handler for SABRE Client"""
+
 from typing import Dict
 from .base import BaseCommand, CommandResult
 from .help import HelpCommand
@@ -32,7 +33,7 @@ class SlashCommandHandler:
 
     def is_slash_command(self, user_input: str) -> bool:
         """Check if input is a slash command"""
-        return user_input.strip().startswith('/')
+        return user_input.strip().startswith("/")
 
     async def execute_command(self, user_input: str) -> CommandResult:
         """Execute a slash command"""
@@ -49,10 +50,9 @@ class SlashCommandHandler:
 
         # Check if command exists
         if command_name not in self.command_instances:
-            available = ', '.join(f'/{name}' for name in self.command_instances.keys())
+            available = ", ".join(f"/{name}" for name in self.command_instances.keys())
             return CommandResult(
-                success=False,
-                message=f"Unknown command '/{command_name}'. Available commands: {available}"
+                success=False, message=f"Unknown command '/{command_name}'. Available commands: {available}"
             )
 
         # Execute the command
@@ -60,10 +60,7 @@ class SlashCommandHandler:
             command = self.command_instances[command_name]
             return await command.execute(args)
         except Exception as e:
-            return CommandResult(
-                success=False,
-                message=f"Command error: {str(e)}"
-            )
+            return CommandResult(success=False, message=f"Command error: {str(e)}")
 
     def get_available_commands(self) -> list:
         """Get list of available command names"""

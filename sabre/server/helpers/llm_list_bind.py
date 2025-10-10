@@ -3,9 +3,8 @@ LLM List Bind helper - extract lists from data using LLM.
 
 Allows code to extract structured lists from unstructured data.
 """
-import asyncio
+
 import logging
-import re
 from typing import Any, Callable
 
 from sabre.common.utils.prompt_loader import PromptLoader
@@ -48,6 +47,7 @@ class LLMListBind:
         logger.debug(f"llm_list_bind({str(expr)[:50]}, {llm_instruction})")
 
         from sabre.server.helpers.llm_call import run_async_from_sync
+
         return run_async_from_sync(self.execute(expr, llm_instruction, count))
 
     async def execute(self, expr: Any, llm_instruction: str, count: int, max_retries: int = 3) -> list:
@@ -65,12 +65,12 @@ class LLMListBind:
         """
         # Load prompt
         prompt = PromptLoader.load(
-            'llm_list_bind.prompt',
+            "llm_list_bind.prompt",
             template={
-                'goal': llm_instruction.replace('"', ''),
-                'context': str(expr),
-                'type': 'str',  # Default to string type
-            }
+                "goal": llm_instruction.replace('"', ""),
+                "context": str(expr),
+                "type": "str",  # Default to string type
+            },
         )
 
         # Combine system_message and user_message as instructions
@@ -79,9 +79,7 @@ class LLMListBind:
         # Get or create OpenAI client (respects env vars)
         client = self.get_openai_client()
 
-        conversation = await client.conversations.create(
-            metadata={"type": "llm_list_bind"}
-        )
+        conversation = await client.conversations.create(metadata={"type": "llm_list_bind"})
 
         # Send initial message with instructions
         await client.responses.create(
@@ -104,10 +102,7 @@ class LLMListBind:
             logger.info(f"llm_list_bind attempt {attempt + 1}/{max_retries}")
 
             tree = ExecutionTree()
-            node = tree.push(
-                ExecutionNodeType.NESTED_LLM_CALL,
-                metadata={"helper": "llm_list_bind", "attempt": attempt + 1}
-            )
+            tree.push(ExecutionNodeType.NESTED_LLM_CALL, metadata={"helper": "llm_list_bind", "attempt": attempt + 1})
 
             try:
                 # Call LLM to extract list (pass instructions on every call)
@@ -127,6 +122,7 @@ class LLMListBind:
 
                 # Try to parse as Python list
                 import ast
+
                 try:
                     result = ast.literal_eval(result_text)
                     if isinstance(result, list):

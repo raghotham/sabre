@@ -20,20 +20,22 @@ import uuid
 
 class ExecutionNodeType(Enum):
     """Types of execution nodes"""
-    CLIENT_REQUEST = "client_request"      # User message
-    RESPONSE_ROUND = "response_round"      # LLM inference
+
+    CLIENT_REQUEST = "client_request"  # User message
+    RESPONSE_ROUND = "response_round"  # LLM inference
     HELPERS_EXECUTION = "helpers_execution"  # Executing <helpers>
-    NESTED_LLM_CALL = "nested_llm_call"    # llm_call() from helper
-    HELPER_FUNCTION = "helper_function"    # Individual helper call
+    NESTED_LLM_CALL = "nested_llm_call"  # llm_call() from helper
+    HELPER_FUNCTION = "helper_function"  # Individual helper call
 
 
 class ExecutionStatus(Enum):
     """Status of execution node"""
-    PENDING = "pending"        # Not started
-    RUNNING = "running"        # Currently executing
-    COMPLETED = "completed"    # Finished successfully
-    ERROR = "error"           # Failed with error
-    CANCELLED = "cancelled"    # User cancelled
+
+    PENDING = "pending"  # Not started
+    RUNNING = "running"  # Currently executing
+    COMPLETED = "completed"  # Finished successfully
+    ERROR = "error"  # Failed with error
+    CANCELLED = "cancelled"  # User cancelled
 
 
 @dataclass
@@ -44,6 +46,7 @@ class ExecutionNode:
     Represents one operation (LLM call, helper execution, etc.)
     with explicit parent-child relationships.
     """
+
     id: str
     parent_id: Optional[str]
     node_type: ExecutionNodeType
@@ -51,7 +54,7 @@ class ExecutionNode:
     start_time: datetime
     end_time: Optional[datetime]
     metadata: dict = field(default_factory=dict)
-    children: list['ExecutionNode'] = field(default_factory=list)
+    children: list["ExecutionNode"] = field(default_factory=list)
 
     def duration_ms(self) -> float:
         """Get duration in milliseconds"""
@@ -78,10 +81,7 @@ class ExecutionTree:
         self.nodes: dict[str, ExecutionNode] = {}
 
     def create_node(
-        self,
-        node_type: ExecutionNodeType,
-        metadata: dict | None = None,
-        parent_id: str | None = None
+        self, node_type: ExecutionNodeType, metadata: dict | None = None, parent_id: str | None = None
     ) -> ExecutionNode:
         """
         Create a new execution node.
@@ -100,11 +100,7 @@ class ExecutionTree:
         self.nodes[node.id] = node
         return node
 
-    def push(
-        self,
-        node_type: ExecutionNodeType,
-        metadata: dict | None = None
-    ) -> ExecutionNode:
+    def push(self, node_type: ExecutionNodeType, metadata: dict | None = None) -> ExecutionNode:
         """
         Create and enter a new execution context.
 
@@ -189,7 +185,7 @@ class ExecutionTree:
                 round_numbers.append(1)
             elif round_numbers and node.node_type in (
                 ExecutionNodeType.HELPERS_EXECUTION,
-                ExecutionNodeType.NESTED_LLM_CALL
+                ExecutionNodeType.NESTED_LLM_CALL,
             ):
                 # Increment the last round number
                 round_numbers[-1] += 1
@@ -201,6 +197,7 @@ class ExecutionTree:
 
     def to_dict(self) -> dict:
         """Serialize tree to dictionary"""
+
         def node_to_dict(node: ExecutionNode) -> dict:
             return {
                 "id": node.id,

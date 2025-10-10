@@ -7,9 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Python Commands
 **Always use `uv run` for running anything related to Python.**
 
-- **Server**: `uv run python -m llmvm2.server`
-- **Client**: `uv run python -m llmvm2.client`
-- **CLI**: `uv run python -m llmvm2.cli`
+- **Server**: `uv run python -m sabre.server`
+- **Client**: `uv run python -m sabre.client`
 - **Install dependencies**: `uv sync` or `pip install -e .`
 - **Run tests**: `uv run pytest tests/`
 
@@ -17,7 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Core Components
 
-**llmvm2** is a simplified, clean reimplementation of LLMVM with focus on:
+**SABRE** is a simplified, clean reimplementation of LLMVM with focus on:
 - Minimal client-server architecture
 - Python runtime with bash helper execution
 - Conversations API for state management
@@ -26,18 +25,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Directory Structure
 
-- **`llmvm2/server/`**: Server components
+- **`sabre/server/`**: Server components
   - `orchestrator.py`: Coordinates LLM calls and execution
   - `python_runtime.py`: Python code execution environment
   - `bash_helper.py`: Bash command execution helper
   - `api/server.py`: WebSocket server implementation
   - `prompts/`: System prompts and templates
 
-- **`llmvm2/client/`**: Minimal terminal client
+- **`sabre/client/`**: Minimal terminal client
   - CLI interface for interacting with the server
   - Message rendering and user input handling
 
-- **`llmvm2/common/`**: Shared components
+- **`sabre/common/`**: Shared components
   - `config/`: Configuration and dependency injection
   - `utils/`: Utilities including performance tracking
   - LLM executors for different providers

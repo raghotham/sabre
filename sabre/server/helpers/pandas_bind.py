@@ -3,7 +3,7 @@ Pandas Bind helper - convert data to pandas DataFrame using LLM.
 
 Allows code to convert arbitrary data into structured DataFrames.
 """
-import asyncio
+
 import logging
 from typing import Any, Callable
 
@@ -49,10 +49,11 @@ class PandasBind:
 
         # Handle CSV files/URLs directly
         if isinstance(expr, str):
-            if expr.endswith('.csv') or 'csv' in expr.lower():
+            if expr.endswith(".csv") or "csv" in expr.lower():
                 return pd.read_csv(expr)
 
         from sabre.server.helpers.llm_call import run_async_from_sync
+
         return run_async_from_sync(self.execute(expr))
 
     async def execute(self, expr: Any) -> pd.DataFrame:
@@ -65,7 +66,7 @@ class PandasBind:
         Returns:
             DataFrame
         """
-        prompt = PromptLoader.load('pandas_bind.prompt', template={})
+        prompt = PromptLoader.load("pandas_bind.prompt", template={})
 
         # Combine system_message and user_message as instructions
         system_instructions = f"{prompt['system_message']}\n\n{prompt['user_message']}"
@@ -73,9 +74,7 @@ class PandasBind:
         # Get or create OpenAI client (respects env vars)
         client = self.get_openai_client()
 
-        conversation = await client.conversations.create(
-            metadata={"type": "pandas_bind"}
-        )
+        conversation = await client.conversations.create(metadata={"type": "pandas_bind"})
 
         # Send initial message with instructions
         await client.responses.create(
@@ -92,8 +91,9 @@ class PandasBind:
         input_text = f"### Data\n{str(expr)}"
 
         from sabre.common import ExecutionTree, ExecutionNodeType, ExecutionStatus
+
         tree = ExecutionTree()
-        node = tree.push(ExecutionNodeType.NESTED_LLM_CALL, metadata={"helper": "pandas_bind"})
+        tree.push(ExecutionNodeType.NESTED_LLM_CALL, metadata={"helper": "pandas_bind"})
 
         try:
             # Call LLM to convert to DataFrame structure (pass instructions on every call)
@@ -113,6 +113,7 @@ class PandasBind:
 
             # Try to parse as Python dict/list and convert to DataFrame
             import ast
+
             try:
                 data = ast.literal_eval(result_text)
                 return pd.DataFrame(data)
@@ -122,6 +123,7 @@ class PandasBind:
                 try:
                     # Maybe it's JSON
                     import json
+
                     data = json.loads(result_text)
                     return pd.DataFrame(data)
                 except:

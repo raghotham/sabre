@@ -3,6 +3,7 @@ Bash helper for Python runtime.
 
 Simple bash command execution with result capture.
 """
+
 import subprocess
 import time
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ from dataclasses import dataclass
 @dataclass
 class BashResult:
     """Result of executing a bash command."""
+
     stdout: str
     stderr: str
     exit_code: int
@@ -45,7 +47,7 @@ def execute_bash(command: str, timeout: int = 10000, cwd: str = None) -> BashRes
             capture_output=True,
             text=True,
             timeout=timeout / 1000.0,  # Convert to seconds
-            cwd=cwd
+            cwd=cwd,
         )
 
         execution_time = time.time() - start_time
@@ -55,7 +57,7 @@ def execute_bash(command: str, timeout: int = 10000, cwd: str = None) -> BashRes
             stderr=result.stderr,
             exit_code=result.returncode,
             command=command,
-            execution_time=execution_time
+            execution_time=execution_time,
         )
 
     except subprocess.TimeoutExpired:
@@ -65,17 +67,13 @@ def execute_bash(command: str, timeout: int = 10000, cwd: str = None) -> BashRes
             stderr=f"Command timed out after {timeout}ms",
             exit_code=124,
             command=command,
-            execution_time=execution_time
+            execution_time=execution_time,
         )
 
     except Exception as e:
         execution_time = time.time() - start_time
         return BashResult(
-            stdout="",
-            stderr=f"Execution error: {str(e)}",
-            exit_code=1,
-            command=command,
-            execution_time=execution_time
+            stdout="", stderr=f"Execution error: {str(e)}", exit_code=1, command=command, execution_time=execution_time
         )
 
 

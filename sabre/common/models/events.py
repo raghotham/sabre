@@ -8,12 +8,13 @@ Every event includes execution tree context (node_id, parent_id, depth, path).
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Optional
 import json
 
 
 class EventType(Enum):
     """Types of events"""
+
     # Response events
     RESPONSE_START = "response_start"
     RESPONSE_TOKEN = "response_token"
@@ -56,6 +57,7 @@ class Event:
     - timestamp: When event occurred
     - data: Event-specific data
     """
+
     type: EventType
     node_id: str
     parent_id: Optional[str]
@@ -80,16 +82,14 @@ class Event:
 
     def to_dict(self) -> dict:
         """Convert event to dict, handling enums and Content objects"""
+
         def convert_value(obj):
             """Recursively convert values to JSON-serializable types"""
-            from sabre.common.models.messages import Content, ContentType
+            from sabre.common.models.messages import Content
 
             if isinstance(obj, Content):
                 # Serialize Content objects
-                return {
-                    "type": obj.type.value,
-                    "data": obj.data
-                }
+                return {"type": obj.type.value, "data": obj.data}
             elif isinstance(obj, Enum):
                 return obj.value
             elif isinstance(obj, datetime):
@@ -110,11 +110,11 @@ class Event:
         return json.dumps(self.to_dict())
 
     @classmethod
-    def from_json(cls, json_str: str) -> 'Event':
+    def from_json(cls, json_str: str) -> "Event":
         """Parse event from JSON"""
         d = json.loads(json_str)
-        d['type'] = EventType(d['type'])
-        d['timestamp'] = datetime.fromisoformat(d['timestamp'])
+        d["type"] = EventType(d["type"])
+        d["timestamp"] = datetime.fromisoformat(d["timestamp"])
 
         # Determine specific event class based on type
         event_classes = {
@@ -135,7 +135,7 @@ class Event:
             EventType.ERROR: ErrorEvent,
         }
 
-        event_class = event_classes.get(d['type'], Event)
+        event_class = event_classes.get(d["type"], Event)
         return event_class(**d)
 
 
@@ -170,7 +170,7 @@ class ResponseStartEvent(Event):
                 "round_id": round_id,
                 "prompt_tokens": prompt_tokens,
                 "previous_response_id": previous_response_id,
-            }
+            },
         )
 
 
@@ -197,7 +197,7 @@ class ResponseTokenEvent(Event):
             conversation_id=conversation_id,
             timestamp=datetime.now(),
             path_summary=path_summary,
-            data={"token": token}
+            data={"token": token},
         )
 
 
@@ -224,7 +224,7 @@ class ResponseThinkingTokenEvent(Event):
             conversation_id=conversation_id,
             timestamp=datetime.now(),
             path_summary=path_summary,
-            data={"token": token}
+            data={"token": token},
         )
 
 
@@ -265,7 +265,7 @@ class ResponseTextEvent(Event):
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
                 "reasoning_tokens": reasoning_tokens,
-            }
+            },
         )
 
 
@@ -300,7 +300,7 @@ class ResponseEndEvent(Event):
                 "total_tokens": total_tokens,
                 "response_id": response_id,
                 "stop_reason": stop_reason,
-            }
+            },
         )
 
 
@@ -335,7 +335,7 @@ class ResponseRetryEvent(Event):
                 "max_retries": max_retries,
                 "wait_seconds": wait_seconds,
                 "reason": reason,
-            }
+            },
         )
 
 
@@ -366,7 +366,7 @@ class HelpersExtractedEvent(Event):
             data={
                 "code": code,
                 "block_count": block_count,
-            }
+            },
         )
 
 
@@ -393,7 +393,7 @@ class HelpersStartEvent(Event):
             conversation_id=conversation_id,
             timestamp=datetime.now(),
             path_summary=path_summary,
-            data={"code": code}
+            data={"code": code},
         )
 
 
@@ -428,7 +428,7 @@ class HelpersEndEvent(Event):
                 "duration_ms": duration_ms,
                 "block_number": block_number,
                 "code_preview": code_preview,
-            }
+            },
         )
 
 
@@ -459,7 +459,7 @@ class NestedCallStartEvent(Event):
             data={
                 "caller": caller,
                 "instruction": instruction,
-            }
+            },
         )
 
 
@@ -490,7 +490,7 @@ class NestedCallEndEvent(Event):
             data={
                 "result": result,
                 "duration_ms": duration_ms,
-            }
+            },
         )
 
 
@@ -521,7 +521,7 @@ class NodeCreatedEvent(Event):
             data={
                 "node_type": node_type,
                 "metadata": metadata,
-            }
+            },
         )
 
 
@@ -552,7 +552,7 @@ class NodeUpdatedEvent(Event):
             data={
                 "status": status,
                 "duration_ms": duration_ms,
-            }
+            },
         )
 
 
@@ -579,7 +579,7 @@ class CompleteEvent(Event):
             conversation_id=conversation_id,
             timestamp=datetime.now(),
             path_summary=path_summary,
-            data={"final_message": final_message}
+            data={"final_message": final_message},
         )
 
 
@@ -610,7 +610,7 @@ class ErrorEvent(Event):
             data={
                 "error_message": error_message,
                 "error_type": error_type,
-            }
+            },
         )
 
 
@@ -639,5 +639,5 @@ class CancelledEvent(Event):
             path_summary=path_summary,
             data={
                 "message": message,
-            }
+            },
         )

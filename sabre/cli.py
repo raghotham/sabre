@@ -3,6 +3,7 @@ SABRE CLI Entry Point.
 
 Starts the server in background and launches the client.
 """
+
 import argparse
 import asyncio
 import os
@@ -84,6 +85,7 @@ def start_server():
 
         # Check health endpoint
         import requests
+
         max_retries = 40  # Increased to 20 seconds (40 * 0.5s)
         for i in range(max_retries):
             try:
@@ -129,19 +131,15 @@ def stop_server():
         try:
             pid = int(pid_file.read_text().strip())
         except ValueError:
-            print(f"Invalid PID in file", file=sys.stderr)
+            print("Invalid PID in file", file=sys.stderr)
             pid_file.unlink(missing_ok=True)
 
     # If no PID from file, search for running server process
     if pid is None:
         try:
-            result = subprocess.run(
-                ["pgrep", "-f", "sabre.server"],
-                capture_output=True,
-                text=True
-            )
+            result = subprocess.run(["pgrep", "-f", "sabre.server"], capture_output=True, text=True)
             if result.returncode == 0:
-                pids = [int(p) for p in result.stdout.strip().split('\n') if p]
+                pids = [int(p) for p in result.stdout.strip().split("\n") if p]
                 if pids:
                     pid = pids[0]  # Take first match
                     print(f"Found server process via search (PID: {pid})")
@@ -186,6 +184,7 @@ def stop_server():
 async def run_client():
     """Run the client"""
     from sabre.client.client import main
+
     return await main()
 
 

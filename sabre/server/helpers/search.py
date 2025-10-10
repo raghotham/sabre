@@ -3,6 +3,7 @@ Web search helper using DuckDuckGo.
 
 Provides free web search without API keys.
 """
+
 import logging
 from typing import List, Dict
 
@@ -44,11 +45,13 @@ class Search:
 
             return_results: List[Dict] = []
             for result in results:
-                return_results.append({
-                    'title': result.get('title', ''),
-                    'link': result.get('href', ''),
-                    'snippet': result.get('body', ''),
-                })
+                return_results.append(
+                    {
+                        "title": result.get("title", ""),
+                        "link": result.get("href", ""),
+                        "snippet": result.get("body", ""),
+                    }
+                )
 
             logger.info(f"Found {len(return_results)} results")
 

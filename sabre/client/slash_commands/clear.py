@@ -1,4 +1,5 @@
 """Clear command - clears conversation context"""
+
 from .base import BaseCommand, CommandResult
 
 
@@ -15,8 +16,4 @@ class ClearCommand(BaseCommand):
 
     async def execute(self, args: list) -> CommandResult:
         """Clear the conversation context by signaling server to create new conversation"""
-        return CommandResult(
-            success=True,
-            message="Clearing conversation...",
-            data={"action": "clear_conversation"}
-        )
+        return CommandResult(success=True, message="Clearing conversation...", data={"action": "clear_conversation"})

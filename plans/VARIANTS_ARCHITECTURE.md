@@ -205,6 +205,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class HelperRegistry:
     """
     Manages helper registration and filtering based on variant configuration.
@@ -241,7 +242,9 @@ class HelperRegistry:
                 if fnmatch.fnmatch(name, pattern):
                     filtered[name] = helper
 
-        logger.info(f"Filtered {len(filtered)}/{len(self._all_helpers)} helpers for patterns: {patterns}")
+        logger.info(
+            f"Filtered {len(filtered)}/{len(self._all_helpers)} helpers for patterns: {patterns}"
+        )
         return filtered
 
     def get_helper_descriptions(self, patterns: List[str]) -> str:
@@ -328,8 +331,8 @@ class Orchestrator:
         self,
         executor: ResponseExecutor,
         runtime: PythonRuntime,
-        variant: str = 'default',  # NEW
-        mode: str = 'tools',
+        variant: str = "default",  # NEW
+        mode: str = "tools",
         model: str = None,
         event_callback: Callable[[Event], Awaitable[None]] = None,
     ):
@@ -339,18 +342,24 @@ class Orchestrator:
 
         # Load variant configuration
         from llmvm2.config.variant_loader import VariantLoader
+
         self.variant_config = VariantLoader.load(variant)
 
         # Initialize helper registry with filtered helpers
         from llmvm2.server.helper_registry import HelperRegistry
+
         self.helper_registry = HelperRegistry()
         self._register_all_helpers()
 
         # Get filtered helpers for this variant
-        allowed_patterns = self.variant_config['helpers']
-        self.active_helpers = self.helper_registry.get_filtered_helpers(allowed_patterns)
+        allowed_patterns = self.variant_config["helpers"]
+        self.active_helpers = self.helper_registry.get_filtered_helpers(
+            allowed_patterns
+        )
 
-        logger.info(f"Initialized variant '{variant}': {len(self.active_helpers)} helpers available")
+        logger.info(
+            f"Initialized variant '{variant}': {len(self.active_helpers)} helpers available"
+        )
 
     def load_default_instructions(self) -> str:
         """Load instructions with variant-specific customization."""
@@ -358,25 +367,23 @@ class Orchestrator:
         effective_mode = self._get_effective_mode()
 
         # Load base template
-        prompt_name = 'continuation_execution.prompt'
+        prompt_name = "continuation_execution.prompt"
 
         # Get filtered helper descriptions
         helper_descriptions = self.helper_registry.get_helper_descriptions(
-            self.variant_config['helpers']
+            self.variant_config["helpers"]
         )
 
         # Load with variant-specific template variables
         template = {
-            'variant_persona': self.variant_config['persona'],
-            'variant_workflow': self.variant_config.get('workflow', ''),
-            'filtered_helpers': helper_descriptions,
+            "variant_persona": self.variant_config["persona"],
+            "variant_workflow": self.variant_config.get("workflow", ""),
+            "filtered_helpers": helper_descriptions,
             # ... other template vars
         }
 
         prompt_parts = PromptLoader.load(
-            prompt_name,
-            mode=effective_mode,
-            template=template
+            prompt_name, mode=effective_mode, template=template
         )
 
         return f"{prompt_parts['system_message']}\n\n{prompt_parts['user_message']}"

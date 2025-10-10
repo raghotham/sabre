@@ -3,7 +3,7 @@ Tests for Python Runtime.
 
 Run with: uv run pytest tests/test_python_runtime.py
 """
-import pytest
+
 from sabre.server.python_runtime import PythonRuntime
 from sabre.server.bash_helper import BashResult
 
@@ -70,7 +70,7 @@ result(py_files)
 
     assert result.success
     assert len(result.results) == 1
-    assert result.results[0] == ['a.py', 'b.py']
+    assert result.results[0] == ["a.py", "b.py"]
 
 
 def test_error_handling():
@@ -97,7 +97,7 @@ def test_namespace_isolation():
     result2 = runtime.execute("result(locals().get('x', 'not found'))")
     assert result2.success
     # x should not exist in new namespace
-    assert result2.results[0] == 'not found'
+    assert result2.results[0] == "not found"
 
 
 def test_multiple_result_calls():

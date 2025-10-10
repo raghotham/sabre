@@ -126,4 +126,3 @@ I'll summarize the content/data of each of the variables that have been executed
 {{dictionary}}
 
 Look at the code, look at the error, look at the summary of the variables that have been run so far and then re-write the entire python code to avoid the error. Do not explain yourself, don't ask questions, don't use natural language, just re-write the entire python code. Do not embed the code in ```python markdown blocks. Do not embed the code in <helpers></helpers> blocks. Just emit raw python code.
-

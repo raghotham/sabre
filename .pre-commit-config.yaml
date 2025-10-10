@@ -46,7 +46,7 @@ repos:
     hooks:
     -   id: check-imports
         name: Check for circular imports
-        entry: uv run python -c "from cc_vec import search, stats, fetch; print('✓ Import check passed')"
+        entry: uv run python -c "from sabre.client.tui import TUI; from sabre.client.client import Client; from sabre.server.orchestrator import Orchestrator; print('✓ Import check passed')"
         language: system
         pass_filenames: false
         always_run: true

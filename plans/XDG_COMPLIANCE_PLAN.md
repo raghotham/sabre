@@ -84,6 +84,7 @@ Environment variables:
 - XDG_STATE_HOME: User state directory (default: ~/.local/state)
 - XDG_CACHE_HOME: User cache directory (default: ~/.cache)
 """
+
 import os
 from pathlib import Path
 
@@ -219,6 +220,7 @@ class SabrePaths:
 
 # Convenience functions for common operations
 
+
 def get_logs_dir() -> Path:
     """Get logs directory."""
     return SabrePaths.get_logs_dir()
@@ -252,13 +254,16 @@ def ensure_dirs():
    ```python
    from sabre.common.paths import get_logs_dir, get_pid_file, ensure_dirs
 
+
    def get_log_dir():
        """Get logs directory path"""
        return get_logs_dir()
 
+
    def get_pid_file():
        """Get PID file path"""
        return get_pid_file()
+
 
    def start_server():
        """Start the SABRE server in background"""
@@ -271,6 +276,7 @@ def ensure_dirs():
 2. **`sabre/server/__main__.py`**
    ```python
    from sabre.common.paths import get_logs_dir, ensure_dirs
+
 
    def main():
        """Run the sabre server."""
@@ -285,6 +291,7 @@ def ensure_dirs():
    ```python
    from sabre.common.paths import get_logs_dir, get_files_dir, ensure_dirs
 
+
    @asynccontextmanager
    async def lifespan(app: FastAPI):
        # Ensure directories exist
@@ -292,6 +299,7 @@ def ensure_dirs():
 
        log_dir = get_logs_dir()
        # ... rest of code
+
 
    @app.get("/files/{conversation_id}/{filename}")
    async def serve_file(conversation_id: str, filename: str):
@@ -305,11 +313,9 @@ def ensure_dirs():
    ```python
    from sabre.common.paths import get_files_dir
 
+
    async def _save_image_to_disk(
-       self,
-       image_content: ImageContent,
-       conversation_id: str,
-       filename: str
+       self, image_content: ImageContent, conversation_id: str, filename: str
    ) -> str:
        """Save image to disk and return URL."""
        from pathlib import Path
@@ -348,6 +354,7 @@ On first run, check if old directories exist and migrate:
 ```python
 # In sabre/common/paths.py
 
+
 @staticmethod
 def migrate_from_old_structure():
     """Migrate from old ~/.sabre structure to XDG-compliant structure."""
@@ -385,6 +392,7 @@ Call this in startup:
 ```python
 # In sabre/server/__main__.py and sabre/cli.py
 from sabre.common.paths import ensure_dirs, migrate_from_old_structure
+
 
 def main():
     migrate_from_old_structure()

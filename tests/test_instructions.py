@@ -7,6 +7,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+
 async def test():
     from sabre.server.api.server import SYSTEM_PROMPT
 
@@ -21,11 +22,12 @@ async def test():
         idx = SYSTEM_PROMPT.find("<helpers>")
         print(f"Found at position {idx}")
         print("Context around <helpers>:")
-        print(SYSTEM_PROMPT[max(0, idx-200):idx+200])
+        print(SYSTEM_PROMPT[max(0, idx - 200) : idx + 200])
     else:
         print("NOT FOUND!")
 
     print("\n" + "=" * 80)
+
 
 if __name__ == "__main__":
     asyncio.run(test())

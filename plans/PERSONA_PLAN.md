@@ -640,6 +640,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class HelperRegistry:
     """
     Manages helper registration and filtering based on persona configuration.
@@ -664,7 +665,7 @@ class HelperRegistry:
         import inspect
 
         for method_name, method in inspect.getmembers(helper_class, inspect.isfunction):
-            if not method_name.startswith('_'):
+            if not method_name.startswith("_"):
                 full_name = f"{class_name}.{method_name}"
                 self.register(full_name, method)
 
@@ -727,7 +728,11 @@ class HelperRegistry:
         for class_name, methods in sorted(by_class.items()):
             lines.append(f"\n## {class_name}\n")
             for method_name, helper in sorted(methods, key=lambda x: x[0]):
-                full_name = f"{class_name}.{method_name}" if class_name != "Core BCL" else method_name
+                full_name = (
+                    f"{class_name}.{method_name}"
+                    if class_name != "Core BCL"
+                    else method_name
+                )
 
                 # Get docstring
                 doc = getattr(helper, "__doc__", "") or ""
@@ -750,11 +755,12 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class PersonaLoader:
     """Load persona configurations from YAML."""
 
     @staticmethod
-    def load(persona_name: str = 'default') -> Dict[str, Any]:
+    def load(persona_name: str = "default") -> Dict[str, Any]:
         """
         Load persona configuration.
 
@@ -765,8 +771,8 @@ class PersonaLoader:
             Dict with persona, approach, workflow, helpers
         """
         # Try user config first
-        user_config = Path.home() / '.config' / 'llmvm2' / 'personas.yaml'
-        default_config = Path(__file__).parent / 'personas.yaml'
+        user_config = Path.home() / ".config" / "llmvm2" / "personas.yaml"
+        default_config = Path(__file__).parent / "personas.yaml"
 
         config_path = user_config if user_config.exists() else default_config
 
@@ -775,11 +781,11 @@ class PersonaLoader:
         with open(config_path) as f:
             personas = yaml.safe_load(f)
 
-        if persona_name not in personas['personas']:
+        if persona_name not in personas["personas"]:
             logger.warning(f"Persona '{persona_name}' not found, using 'default'")
-            persona_name = 'default'
+            persona_name = "default"
 
-        persona_config = personas['personas'][persona_name]
+        persona_config = personas["personas"][persona_name]
         logger.info(f"Loaded persona: {persona_config['name']}")
 
         return persona_config
@@ -795,8 +801,8 @@ class Orchestrator:
         self,
         executor: ResponseExecutor,
         runtime: PythonRuntime,
-        persona: str = 'default',  # NEW
-        mode: str = 'tools',
+        persona: str = "default",  # NEW
+        mode: str = "tools",
         model: str = None,
         event_callback: Callable[[Event], Awaitable[None]] = None,
     ):
@@ -806,16 +812,20 @@ class Orchestrator:
 
         # Load persona configuration
         from llmvm2.config.persona_loader import PersonaLoader
+
         self.persona_config = PersonaLoader.load(persona)
 
         # Initialize helper registry with filtered helpers
         from llmvm2.server.helper_registry import HelperRegistry
+
         self.helper_registry = HelperRegistry()
         self._register_all_helpers()
 
         # Get filtered helpers for this persona
-        allowed_patterns = self.persona_config['helpers']
-        self.active_helpers = self.helper_registry.get_filtered_helpers(allowed_patterns)
+        allowed_patterns = self.persona_config["helpers"]
+        self.active_helpers = self.helper_registry.get_filtered_helpers(
+            allowed_patterns
+        )
 
         # Initialize runtime with filtered helpers
         self.runtime = PythonRuntime(active_helpers=self.active_helpers)
@@ -831,6 +841,7 @@ class Orchestrator:
         """Register all available helper classes."""
         # Core BCL functions
         from llmvm2.server.bcl import BCL
+
         bcl = BCL()
         self.helper_registry.register("llm_call", bcl.llm_call)
         self.helper_registry.register("llm_bind", bcl.llm_bind)
@@ -849,7 +860,9 @@ class Orchestrator:
         )
 
         self.helper_registry.register_class("DatabaseHelpers", DatabaseHelpers)
-        self.helper_registry.register_class("SemanticDatabaseHelpers", SemanticDatabaseHelpers)
+        self.helper_registry.register_class(
+            "SemanticDatabaseHelpers", SemanticDatabaseHelpers
+        )
         self.helper_registry.register_class("WebHelpers", WebHelpers)
         self.helper_registry.register_class("Search", Search)
         self.helper_registry.register_class("SearchTool", SearchTool)
@@ -863,29 +876,27 @@ class Orchestrator:
         effective_mode = self._get_effective_mode()
 
         # Load base template
-        prompt_name = 'continuation_execution.prompt'
+        prompt_name = "continuation_execution.prompt"
 
         # Get filtered helper descriptions
         helper_descriptions = self.helper_registry.get_helper_descriptions(
-            self.persona_config['helpers']
+            self.persona_config["helpers"]
         )
 
         # Load with persona-specific template variables
         template = {
-            'persona': self.persona_config['persona'],
-            'persona_approach': self.persona_config['approach'],
-            'persona_workflow': self.persona_config.get('workflow', ''),
-            'filtered_helpers': helper_descriptions,
-            'context_window_tokens': '128000',
-            'context_window_words': '96000',
-            'context_window_bytes': '512000',
-            'scratchpad_token': 'scratchpad',
+            "persona": self.persona_config["persona"],
+            "persona_approach": self.persona_config["approach"],
+            "persona_workflow": self.persona_config.get("workflow", ""),
+            "filtered_helpers": helper_descriptions,
+            "context_window_tokens": "128000",
+            "context_window_words": "96000",
+            "context_window_bytes": "512000",
+            "scratchpad_token": "scratchpad",
         }
 
         prompt_parts = PromptLoader.load(
-            prompt_name,
-            mode=effective_mode,
-            template=template
+            prompt_name, mode=effective_mode, template=template
         )
 
         return f"{prompt_parts['system_message']}\n\n{prompt_parts['user_message']}"
@@ -912,16 +923,20 @@ class PythonRuntime:
         """Inject only active helpers into runtime namespace."""
         # Inject Python builtins
         import builtins
-        self.globals['__builtins__'] = builtins
+
+        self.globals["__builtins__"] = builtins
 
         # Inject allowed libraries
         import numpy as np, pandas as pd, scipy, asyncio
-        self.globals.update({
-            'np': np,
-            'pd': pd,
-            'scipy': scipy,
-            'asyncio': asyncio,
-        })
+
+        self.globals.update(
+            {
+                "np": np,
+                "pd": pd,
+                "scipy": scipy,
+                "asyncio": asyncio,
+            }
+        )
 
         # Inject filtered helpers
         for name, helper in self.active_helpers.items():

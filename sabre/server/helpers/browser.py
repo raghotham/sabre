@@ -3,6 +3,7 @@ Browser helper for rendering JavaScript-heavy websites.
 
 Uses Playwright to handle dynamic content that requires JS execution.
 """
+
 import asyncio
 import logging
 from typing import Optional
@@ -18,7 +19,7 @@ class BrowserHelper:
     Singleton pattern - reuses browser instance across requests for performance.
     """
 
-    _instance: Optional['BrowserHelper'] = None
+    _instance: Optional["BrowserHelper"] = None
     _lock = asyncio.Lock()
 
     def __init__(self):
@@ -29,7 +30,7 @@ class BrowserHelper:
         self._initialized = False
 
     @classmethod
-    async def get_instance(cls) -> 'BrowserHelper':
+    async def get_instance(cls) -> "BrowserHelper":
         """
         Get or create singleton browser instance.
 
@@ -55,17 +56,17 @@ class BrowserHelper:
             self.browser = await self.playwright.chromium.launch(
                 headless=True,
                 args=[
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-blink-features=AutomationControlled',
-                ]
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-blink-features=AutomationControlled",
+                ],
             )
 
             # Create persistent context
             self.context = await self.browser.new_context(
-                viewport={'width': 1920, 'height': 1080},
-                user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                viewport={"width": 1920, "height": 1080},
+                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             )
 
             self._initialized = True
@@ -76,7 +77,7 @@ class BrowserHelper:
             await self._cleanup()
             raise
 
-    async def get_url(self, url: str, wait_for: str = 'networkidle', timeout: int = 30000) -> str:
+    async def get_url(self, url: str, wait_for: str = "networkidle", timeout: int = 30000) -> str:
         """
         Navigate to URL and return rendered HTML.
 
@@ -133,7 +134,7 @@ class BrowserHelper:
             logger.info(f"Taking screenshot of: {url}")
 
             page = await self.context.new_page()
-            await page.goto(url, wait_until='networkidle', timeout=timeout)
+            await page.goto(url, wait_until="networkidle", timeout=timeout)
 
             screenshot_bytes = await page.screenshot(full_page=True)
 

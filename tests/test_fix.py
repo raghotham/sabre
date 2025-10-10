@@ -16,9 +16,7 @@ async def test_conversation_create():
     client = AsyncOpenAI()
 
     # This should work (no instructions parameter)
-    conversation = await client.conversations.create(
-        metadata={"test": "value"}
-    )
+    conversation = await client.conversations.create(metadata={"test": "value"})
 
     print(f"✓ Conversation created successfully: {conversation.id}")
 

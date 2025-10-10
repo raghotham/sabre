@@ -109,20 +109,21 @@ def _should_use_reasoning_mode(self, model: str) -> bool:
     Returns:
         True if reasoning mode should be used
     """
-    reasoning_models = ['o1', 'o3', 'o4', 'o5', 'gpt-5', 'llama', 'grok']
+    reasoning_models = ["o1", "o3", "o4", "o5", "gpt-5", "llama", "grok"]
     model_lower = model.lower()
     return any(rm in model_lower for rm in reasoning_models)
+
 
 def load_default_instructions(self, model: str = None) -> str:
     """Load default instructions, auto-selecting mode if needed."""
     # Auto-select reasoning mode for certain models
-    if model and self._should_use_reasoning_mode(model) and self.mode == 'tools':
+    if model and self._should_use_reasoning_mode(model) and self.mode == "tools":
         logger.info(f"Auto-selecting reasoning mode for model: {model}")
-        effective_mode = 'reasoning'
+        effective_mode = "reasoning"
     else:
         effective_mode = self.mode
 
-    prompt_name = 'continuation_execution.prompt'
+    prompt_name = "continuation_execution.prompt"
     prompt_parts = PromptLoader.load(prompt_name, mode=effective_mode, template={...})
     ...
 ```
@@ -136,7 +137,7 @@ def load_default_instructions(self, model: str = None) -> str:
 ```python
 class PromptLoader:
     @staticmethod
-    def load(prompt_name: str, mode: str = 'tools', template: dict = None) -> dict:
+    def load(prompt_name: str, mode: str = "tools", template: dict = None) -> dict:
         """
         Load a prompt, checking mode-specific directory first, then shared.
 
@@ -169,9 +170,10 @@ class PromptLoader:
     @staticmethod
     def find_in_shared(prompt_name: str) -> Optional[str]:
         """Recursively search for prompt in shared/ directory."""
-        shared_base = Path(__file__).parent.parent / 'server' / 'prompts' / 'shared'
+        shared_base = Path(__file__).parent.parent / "server" / "prompts" / "shared"
         for path in shared_base.rglob(prompt_name):
             return str(path.relative_to(shared_base.parent))
+        # Return None if not found
         return None
 ```
 
@@ -185,7 +187,7 @@ class Orchestrator:
         self,
         executor: ResponseExecutor,
         runtime: PythonRuntime,
-        mode: str = 'tools',  # NEW
+        mode: str = "tools",  # NEW
         model: str = None,  # NEW - for auto-mode selection
         event_callback: Callable[[Event], Awaitable[None]] = None,
     ):
@@ -197,52 +199,49 @@ class Orchestrator:
 
     def _should_use_reasoning_mode(self, model: str) -> bool:
         """Check if model should use reasoning mode prompts."""
-        reasoning_models = ['o1', 'o3', 'o4', 'o5', 'gpt-5', 'llama', 'grok']
+        reasoning_models = ["o1", "o3", "o4", "o5", "gpt-5", "llama", "grok"]
         model_lower = model.lower()
         return any(rm in model_lower for rm in reasoning_models)
 
     def _get_effective_mode(self) -> str:
         """Get effective mode, considering auto-selection."""
-        if self.model and self._should_use_reasoning_mode(self.model) and self.mode == 'tools':
+        if (
+            self.model
+            and self._should_use_reasoning_mode(self.model)
+            and self.mode == "tools"
+        ):
             logger.info(f"Auto-selecting reasoning mode for model: {self.model}")
-            return 'reasoning'
+            return "reasoning"
         return self.mode
 
     async def orchestrate(
-        self,
-        user_message: str,
-        instructions: str = None,
-        ...
+        self, user_message: str, instructions: str = None, **kwargs
     ) -> OrchestrationResult:
         # Get effective mode (may auto-select reasoning)
         effective_mode = self._get_effective_mode()
 
         # Load mode-specific continuation prompt
-        if effective_mode == 'direct':
+        if effective_mode == "direct":
             # Skip helper execution entirely for direct mode
             return await self._direct_response(user_message, instructions)
         else:
             # Use continuation execution for this mode
-            prompt_name = 'continuation_execution.prompt'
+            prompt_name = "continuation_execution.prompt"
             system_prompt = PromptLoader.load(prompt_name, mode=effective_mode)
 
             return await self._continuation_loop(
-                user_message,
-                instructions or system_prompt['system_message']
+                user_message, instructions or system_prompt["system_message"]
             )
 
     async def _direct_response(
-        self,
-        user_message: str,
-        instructions: str = None
+        self, user_message: str, instructions: str = None
     ) -> OrchestrationResult:
         """Direct LLM response without helper execution."""
-        prompt = PromptLoader.load('continuation_execution.prompt', mode='direct')
+        prompt = PromptLoader.load("continuation_execution.prompt", mode="direct")
 
         # Single LLM call, no helper parsing
         response = await self.executor.execute(
-            user_message,
-            instructions=instructions or prompt['system_message']
+            user_message, instructions=instructions or prompt["system_message"]
         )
 
         # Stream directly to client
@@ -255,7 +254,7 @@ class Orchestrator:
         return OrchestrationResult(
             success=True,
             final_response=full_text,
-            tree=None  # No execution tree in direct mode
+            tree=None,  # No execution tree in direct mode
         )
 ```
 
@@ -267,40 +266,42 @@ class Orchestrator:
 # Store mode per WebSocket connection
 connection_modes: dict[str, str] = {}  # connection_id -> mode
 
+
 @app.websocket("/message")
 async def message_endpoint(websocket: WebSocket):
     await websocket.accept()
     connection_id = str(uuid.uuid4())
-    current_mode = 'tools'  # default
+    current_mode = "tools"  # default
     connection_modes[connection_id] = current_mode
 
     logger.info(f"Client {connection_id} connected")
 
     try:
         async for data in websocket.iter_json():
-            message_type = data.get('type')
+            message_type = data.get("type")
 
-            if message_type == 'mode_change':
+            if message_type == "mode_change":
                 # Handle mode change request
-                new_mode = data.get('mode')
-                if new_mode in ['tools', 'direct', 'data_scientist', 'reasoning']:
+                new_mode = data.get("mode")
+                if new_mode in ["tools", "direct", "data_scientist", "reasoning"]:
                     connection_modes[connection_id] = new_mode
                     logger.info(f"Client {connection_id} switched to mode: {new_mode}")
 
-                    await websocket.send_json({
-                        'type': 'mode_changed',
-                        'mode': new_mode,
-                        'message': f"Switched to '{new_mode}' mode"
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "mode_changed",
+                            "mode": new_mode,
+                            "message": f"Switched to '{new_mode}' mode",
+                        }
+                    )
                 else:
-                    await websocket.send_json({
-                        'type': 'error',
-                        'error': f"Unknown mode: {new_mode}"
-                    })
+                    await websocket.send_json(
+                        {"type": "error", "error": f"Unknown mode: {new_mode}"}
+                    )
 
-            elif message_type == 'message':
-                content = data.get('content', '')
-                mode = connection_modes.get(connection_id, 'tools')
+            elif message_type == "message":
+                content = data.get("content", "")
+                mode = connection_modes.get(connection_id, "tools")
 
                 logger.info(f"Processing message in mode: {mode}")
 
@@ -309,16 +310,15 @@ async def message_endpoint(websocket: WebSocket):
                     executor=executor,
                     runtime=runtime,
                     mode=mode,  # Pass mode to orchestrator
-                    event_callback=create_event_sender(websocket)
+                    event_callback=create_event_sender(websocket),
                 )
 
                 result = await orchestrator.orchestrate(content)
 
                 # Send completion
-                await websocket.send_json({
-                    'type': 'complete',
-                    'response': result.final_response
-                })
+                await websocket.send_json(
+                    {"type": "complete", "response": result.final_response}
+                )
 
     finally:
         logger.info(f"Client {connection_id} disconnected")
@@ -335,12 +335,12 @@ class Client:
     def __init__(self, server_url: str):
         self.server_url = server_url
         self.ws: Optional[WebSocket] = None
-        self.current_mode = 'tools'
+        self.current_mode = "tools"
         self.available_modes = {
-            'tools': 'Default mode with full Python helper execution',
-            'direct': 'Direct LLM conversation without code execution',
-            'data_scientist': 'Specialized mode for data science tasks',
-            'reasoning': 'Extended thinking mode with reasoning tokens',
+            "tools": "Default mode with full Python helper execution",
+            "direct": "Direct LLM conversation without code execution",
+            "data_scientist": "Specialized mode for data science tasks",
+            "reasoning": "Extended thinking mode with reasoning tokens",
         }
 
     async def handle_slash_command(self, command: str) -> bool:
@@ -356,7 +356,7 @@ class Client:
         parts = command.strip().split()
         cmd = parts[0].lower()
 
-        if cmd == '/mode':
+        if cmd == "/mode":
             if len(parts) == 1:
                 # Show current mode and available modes
                 self.print(f"<ansigreen>Current mode: {self.current_mode}</ansigreen>")
@@ -380,17 +380,14 @@ class Client:
                 return True
 
             # Send mode change to server
-            await self.ws.send_json({
-                'type': 'mode_change',
-                'mode': new_mode
-            })
+            await self.ws.send_json({"type": "mode_change", "mode": new_mode})
 
             # Wait for confirmation
             response = await self.ws.receive_json()
-            if response.get('type') == 'mode_changed':
+            if response.get("type") == "mode_changed":
                 self.current_mode = new_mode
                 self.print(f"<ansigreen>✓ Switched to '{new_mode}' mode</ansigreen>")
-            elif response.get('type') == 'error':
+            elif response.get("type") == "error":
                 self.print(f"<ansired>Error: {response.get('error')}</ansired>")
 
             return True
@@ -399,16 +396,13 @@ class Client:
 
     async def process_input(self, user_input: str):
         """Process user input, checking for slash commands first."""
-        if user_input.startswith('/'):
+        if user_input.startswith("/"):
             handled = await self.handle_slash_command(user_input)
             if handled:
                 return
 
         # Regular message - send to server
-        await self.ws.send_json({
-            'type': 'message',
-            'content': user_input
-        })
+        await self.ws.send_json({"type": "message", "content": user_input})
 ```
 
 ### 5. Prompt File Migration
