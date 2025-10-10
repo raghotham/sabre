@@ -3,6 +3,7 @@ Helper introspection utility.
 
 Extracts signatures and documentation from helper classes and functions.
 """
+
 import inspect
 import logging
 import textwrap
@@ -15,13 +16,13 @@ def _format_type(type_hint: Any) -> str:
     """Format type hint for display."""
     if type_hint is None or type_hint == inspect.Parameter.empty:
         return "Any"
-    if hasattr(type_hint, '__name__'):
+    if hasattr(type_hint, "__name__"):
         return type_hint.__name__
     else:
         # Handle complex types like List[Dict], Optional[str], etc.
         type_str = str(type_hint)
         # Clean up typing module prefixes
-        type_str = type_str.replace('typing.', '')
+        type_str = type_str.replace("typing.", "")
         return type_str
 
 
@@ -59,7 +60,7 @@ def get_function_description_flat(func: Callable, name: str = None, class_name: 
         params = []
         for param_name, param in sig.parameters.items():
             # Skip 'self' and 'cls'
-            if param_name in ('self', 'cls'):
+            if param_name in ("self", "cls"):
                 continue
 
             # Build parameter string
@@ -108,7 +109,7 @@ def get_function_description_flat(func: Callable, name: str = None, class_name: 
 
     except Exception as e:
         logger.error(f"Failed to introspect {name or func.__name__}: {e}")
-        return f"def {name or func.__name__}(...)\n    \"\"\"\n    Function signature unavailable\n    \"\"\"\n"
+        return f'def {name or func.__name__}(...)\n    """\n    Function signature unavailable\n    """\n'
 
 
 def get_class_methods(cls: type, include_private: bool = False) -> list[str]:
@@ -127,7 +128,7 @@ def get_class_methods(cls: type, include_private: bool = False) -> list[str]:
 
     for name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
         # Skip private methods unless requested
-        if not include_private and name.startswith('_'):
+        if not include_private and name.startswith("_"):
             continue
 
         # Get full description with docstring
@@ -154,11 +155,11 @@ def get_helper_signatures(namespace: dict) -> str:
     documented = set()
 
     # Skip these built-in names
-    skip_names = {'print', 'pd', 'plt', 'datetime', '__builtins__'}
+    skip_names = {"print", "pd", "plt", "datetime", "__builtins__"}
 
     # First pass: Document classes with static methods
     for name, obj in namespace.items():
-        if name in skip_names or name.startswith('_'):
+        if name in skip_names or name.startswith("_"):
             continue
 
         if inspect.isclass(obj):
@@ -170,13 +171,13 @@ def get_helper_signatures(namespace: dict) -> str:
 
     # Second pass: Document standalone functions and callable objects
     for name, obj in namespace.items():
-        if name in skip_names or name.startswith('_') or name in documented:
+        if name in skip_names or name.startswith("_") or name in documented:
             continue
 
         if callable(obj):
             try:
                 # For callable class instances, use their __call__ method
-                if hasattr(obj, '__call__') and not inspect.isfunction(obj) and not inspect.ismethod(obj):
+                if hasattr(obj, "__call__") and not inspect.isfunction(obj) and not inspect.ismethod(obj):
                     desc = get_function_description_flat(obj.__call__, name=name)
                 else:
                     desc = get_function_description_flat(obj, name=name)
@@ -188,15 +189,15 @@ def get_helper_signatures(namespace: dict) -> str:
 
     # Add available modules as comments
     modules = []
-    if 'plt' in namespace:
+    if "plt" in namespace:
         modules.append("# plt (matplotlib.pyplot) - for creating graphs")
-    if 'pd' in namespace:
+    if "pd" in namespace:
         modules.append("# pd (pandas) - for data manipulation")
-    if 'datetime' in namespace:
+    if "datetime" in namespace:
         modules.append("# datetime (datetime module) - for date/time operations")
 
-    result = '\n'.join(descriptions)
+    result = "\n".join(descriptions)
     if modules:
-        result += '\n' + '\n'.join(modules)
+        result += "\n" + "\n".join(modules)
 
     return result

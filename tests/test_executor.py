@@ -21,10 +21,10 @@ def executor():
 def tree_context():
     """Create dummy tree context for testing."""
     return {
-        'node_id': 'test-node',
-        'parent_id': None,
-        'depth': 0,
-        'path': ['test-node'],
+        "node_id": "test-node",
+        "parent_id": None,
+        "depth": 0,
+        "path": ["test-node"],
     }
 
 
@@ -51,12 +51,10 @@ async def test_streaming_execution(check_api_key, executor, tree_context):
 
     async def on_event(event):
         if isinstance(event, ResponseTokenEvent):
-            tokens_received.append(event.data['token'])
+            tokens_received.append(event.data["token"])
 
     # Create user message
-    messages = [
-        User(content=[TextContent("Count from 1 to 5, one number per line.")])
-    ]
+    messages = [User(content=[TextContent("Count from 1 to 5, one number per line.")])]
 
     # Execute with streaming
     assistant = await executor.execute(
@@ -81,9 +79,7 @@ async def test_streaming_execution(check_api_key, executor, tree_context):
 async def test_response_continuation(check_api_key, executor):
     """Test response_id continuation."""
     # First message
-    messages1 = [
-        User(content=[TextContent("Say 'Hello, I am ready to continue.'")])
-    ]
+    messages1 = [User(content=[TextContent("Say 'Hello, I am ready to continue.'")])]
 
     # Execute first call
     assistant1 = await executor.execute(messages1)
@@ -98,10 +94,7 @@ async def test_response_continuation(check_api_key, executor):
     print(f"  Response ID: {first_response_id}")
 
     # Continue with response_id
-    messages2 = messages1 + [
-        assistant1,
-        User(content=[TextContent("Now count to 3.")])
-    ]
+    messages2 = messages1 + [assistant1, User(content=[TextContent("Now count to 3.")])]
 
     assistant2 = await executor.execute(
         messages2,
@@ -121,9 +114,7 @@ async def test_response_continuation(check_api_key, executor):
 @pytest.mark.asyncio
 async def test_token_counting(check_api_key, executor):
     """Test approximate token counting."""
-    messages = [
-        User(content=[TextContent("Hello, how are you?")])
-    ]
+    messages = [User(content=[TextContent("Hello, how are you?")])]
 
     token_count = await executor.count_tokens(messages)
 

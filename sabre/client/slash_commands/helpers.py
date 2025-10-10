@@ -1,4 +1,5 @@
 """Helpers command - shows available Python helpers"""
+
 from .base import BaseCommand, CommandResult
 
 
@@ -17,7 +18,5 @@ class HelpersCommand(BaseCommand):
         """Request helpers list from server"""
         # Return a special action to send to server
         return CommandResult(
-            success=True,
-            message="Requesting helpers from server...",
-            data={"action": "request_helpers"}
+            success=True, message="Requesting helpers from server...", data={"action": "request_helpers"}
         )

@@ -3,10 +3,9 @@ LLM Bind helper - bind data to function arguments using LLM.
 
 Allows code to extract structured data and bind it to function calls.
 """
-import asyncio
+
 import logging
-import re
-from typing import Any, Callable, Dict
+from typing import Any, Callable
 
 from sabre.common.utils.prompt_loader import PromptLoader
 
@@ -50,6 +49,7 @@ class LLMBind:
         logger.debug(f"llm_bind({str(expr)[:50]}, {func_str})")
 
         from sabre.server.helpers.llm_call import run_async_from_sync
+
         return run_async_from_sync(self.execute(expr, func_str))
 
     async def execute(self, expr: Any, func_str: str, max_retries: int = 5) -> Any:
@@ -66,10 +66,10 @@ class LLMBind:
         """
         # Load prompt
         prompt = PromptLoader.load(
-            'llm_bind_global.prompt',
+            "llm_bind_global.prompt",
             template={
-                'function_definition': func_str,
-            }
+                "function_definition": func_str,
+            },
         )
 
         # Combine system_message and user_message as instructions
@@ -78,9 +78,7 @@ class LLMBind:
         # Get or create OpenAI client (respects env vars)
         client = self.get_openai_client()
 
-        conversation = await client.conversations.create(
-            metadata={"type": "llm_bind", "function": func_str[:100]}
-        )
+        conversation = await client.conversations.create(metadata={"type": "llm_bind", "function": func_str[:100]})
 
         # Send initial message with instructions
         await client.responses.create(
@@ -103,10 +101,7 @@ class LLMBind:
             logger.info(f"llm_bind attempt {attempt + 1}/{max_retries}")
 
             tree = ExecutionTree()
-            node = tree.push(
-                ExecutionNodeType.NESTED_LLM_CALL,
-                metadata={"helper": "llm_bind", "attempt": attempt + 1}
-            )
+            tree.push(ExecutionNodeType.NESTED_LLM_CALL, metadata={"helper": "llm_bind", "attempt": attempt + 1})
 
             try:
                 # Call LLM to bind arguments (pass instructions on every call)
@@ -126,8 +121,9 @@ class LLMBind:
                 # Look for function call in response (e.g., "get_person_info('Lisa', 'Su', 'AMD')")
                 # Extract just the function call if embedded in text
                 import re
-                func_name = func_str.split('(')[0]
-                match = re.search(rf'{func_name}\([^)]*\)', result_text)
+
+                func_name = func_str.split("(")[0]
+                match = re.search(rf"{func_name}\([^)]*\)", result_text)
                 if match:
                     bound_call = match.group(0)
                 else:

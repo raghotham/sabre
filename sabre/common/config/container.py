@@ -6,7 +6,7 @@ from typing import Any, Type, cast, Dict
 import yaml
 
 
-class Singleton (type):
+class Singleton(type):
     _instances = {}  # type: ignore
 
     def __call__(cls, *args, **kwargs):
@@ -16,15 +16,11 @@ class Singleton (type):
 
 
 class Container(metaclass=Singleton):
-    def __init__(
-            self,
-            config_file: str = os.path.expanduser('~/.config/llmvm/config.yaml'),
-            throw: bool = True
-        ):
+    def __init__(self, config_file: str = os.path.expanduser("~/.config/llmvm/config.yaml"), throw: bool = True):
         # First, load the default configuration
-        default_config_path = Path(__file__).parent.parent / 'default_config.yaml'
+        default_config_path = Path(__file__).parent.parent / "default_config.yaml"
         if default_config_path.exists():
-            with open(default_config_path, 'r') as default_conf:
+            with open(default_config_path, "r") as default_conf:
                 self.configuration: Dict[str, Any] = yaml.load(default_conf, Loader=yaml.FullLoader) or {}
         else:
             self.configuration = {}
@@ -32,17 +28,21 @@ class Container(metaclass=Singleton):
         self.config_file = config_file
         self.type_instance_cache: dict[Type, object] = {}
 
-        if os.getenv('LLMVM_CONFIG'):
-            self.config_file = cast(str, os.getenv('LLMVM_CONFIG'))
+        if os.getenv("LLMVM_CONFIG"):
+            self.config_file = cast(str, os.getenv("LLMVM_CONFIG"))
 
         # Load user config if it exists and merge with defaults
         if os.path.exists(self.config_file):
-            with open(self.config_file, 'r') as conf_file:
+            with open(self.config_file, "r") as conf_file:
                 user_config = yaml.load(conf_file, Loader=yaml.FullLoader) or {}
                 # Deep merge user config over defaults
                 self._deep_merge(self.configuration, user_config)
         elif not os.path.exists(self.config_file) and throw and not default_config_path.exists():
-            raise ValueError('configuration_file {} is not found. Put config in ~/.config/llmvm or set LLMVM_CONFIG'.format(config_file))
+            raise ValueError(
+                "configuration_file {} is not found. Put config in ~/.config/llmvm or set LLMVM_CONFIG".format(
+                    config_file
+                )
+            )
 
     def _deep_merge(self, base: Dict[str, Any], overlay: Dict[str, Any]) -> None:
         """Deep merge overlay dict into base dict"""
@@ -55,7 +55,7 @@ class Container(metaclass=Singleton):
     def resolve(self, t: Type, **extra_args):
         args = {}
         for param in inspect.signature(t.__init__).parameters.values():
-            if param == 'self':
+            if param == "self":
                 continue
             if extra_args and param.name in extra_args.keys():
                 args[param.name] = extra_args[param.name]
@@ -65,12 +65,12 @@ class Container(metaclass=Singleton):
                 args[param.name] = self.configuration[param.name]
         return t(**args)
 
-    def get(self, key: str, default: Any = '') -> Any:
+    def get(self, key: str, default: Any = "") -> Any:
         if key not in self.configuration:
             return default
 
         value = self.configuration[key]
-        if isinstance(value, str) and '~' in value and '/' in value:
+        if isinstance(value, str) and "~" in value and "/" in value:
             return os.path.expanduser(value)
         else:
             return value
@@ -89,13 +89,13 @@ class Container(metaclass=Singleton):
             return self.type_instance_cache[t]
 
     @staticmethod
-    def get_config_variable(name: str, alternate_name: str = '', default: Any = None) -> Any:
+    def get_config_variable(name: str, alternate_name: str = "", default: Any = None) -> Any:
         def parse(value) -> Any:
-            if isinstance(value, str) and (value == 'true' or value == 'True'):
+            if isinstance(value, str) and (value == "true" or value == "True"):
                 return True
-            elif isinstance(value, str) and (value == 'false' or value == 'False'):
+            elif isinstance(value, str) and (value == "false" or value == "False"):
                 return False
-            elif isinstance(value, str) and value.lower() == 'none':
+            elif isinstance(value, str) and value.lower() == "none":
                 return None
             elif isinstance(value, str) and str.isnumeric(value):
                 return int(value)
@@ -104,7 +104,7 @@ class Container(metaclass=Singleton):
             else:
                 return value
 
-        if isinstance(default, str) and default.startswith('~'):
+        if isinstance(default, str) and default.startswith("~"):
             default = os.path.expanduser(default)
 
         # environment variables take precendence
@@ -121,16 +121,16 @@ class Container(metaclass=Singleton):
             if container.has(name):
                 return parse(container.get(name))
             # Check lowercase version without LLMVM_ prefix
-            if container.has(name.replace('LLMVM_', '').lower()):
-                return parse(container.get(name.replace('LLMVM_', '').lower()))
+            if container.has(name.replace("LLMVM_", "").lower()):
+                return parse(container.get(name.replace("LLMVM_", "").lower()))
             # Check alternate name
             if alternate_name:
                 if container.has(alternate_name):
                     return parse(container.get(alternate_name))
-                if container.has(alternate_name.replace('LLMVM_', '').lower()):
-                    return parse(container.get(alternate_name.replace('LLMVM_', '').lower()))
+                if container.has(alternate_name.replace("LLMVM_", "").lower()):
+                    return parse(container.get(alternate_name.replace("LLMVM_", "").lower()))
         except:
             pass
 
         # If all else fails, use provided default or empty string
-        return parse(default) if default is not None else ''
+        return parse(default) if default is not None else ""

@@ -3,6 +3,7 @@ LLM Call helper - delegate tasks to LLM with fresh context.
 
 Allows code to recursively call the LLM with new context.
 """
+
 import asyncio
 import logging
 from typing import Callable, Coroutine, TypeVar
@@ -11,7 +12,7 @@ from sabre.common.utils.prompt_loader import PromptLoader
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 def run_async_from_sync(coro: Coroutine[None, None, T], timeout: int = 300) -> T:
@@ -31,7 +32,6 @@ def run_async_from_sync(coro: Coroutine[None, None, T], timeout: int = 300) -> T
     try:
         loop = asyncio.get_running_loop()
         # We're inside an async context - use thread-safe execution
-        import concurrent.futures
         future = asyncio.run_coroutine_threadsafe(coro, loop)
         return future.result(timeout=timeout)
     except RuntimeError:
@@ -106,10 +106,10 @@ class LLMCall:
         """
         # Step 1: Load llm_call.prompt
         prompt = PromptLoader.load(
-            'llm_call.prompt',
+            "llm_call.prompt",
             template={
-                'llm_call_message': instructions,
-            }
+                "llm_call_message": instructions,
+            },
         )
 
         # Combine system_message and user_message as instructions
@@ -118,20 +118,20 @@ class LLMCall:
 
         # Step 2: Format input with context
         # Handle Content objects (TextContent, ImageContent, etc.)
-        from sabre.common.models.messages import Content, ImageContent, TextContent
+        from sabre.common.models.messages import Content, ImageContent
 
         context_parts = []
         for i, expr in enumerate(expr_list):
             if isinstance(expr, ImageContent):
                 # Format image as markdown so LLM can see it
-                image_markdown = f"![Image {i+1}](data:{expr.mime_type};base64,{expr.image_data})"
-                context_parts.append(f"### Context {i+1} (Image)\n{image_markdown}")
+                image_markdown = f"![Image {i + 1}](data:{expr.mime_type};base64,{expr.image_data})"
+                context_parts.append(f"### Context {i + 1} (Image)\n{image_markdown}")
             elif isinstance(expr, Content):
                 # Use get_str() for Content objects
-                context_parts.append(f"### Context {i+1}\n{expr.get_str()}")
+                context_parts.append(f"### Context {i + 1}\n{expr.get_str()}")
             else:
                 # Plain data - convert to string
-                context_parts.append(f"### Context {i+1}\n{str(expr)}")
+                context_parts.append(f"### Context {i + 1}\n{str(expr)}")
 
         context_text = "\n\n".join(context_parts)
 
@@ -142,12 +142,9 @@ class LLMCall:
         from sabre.common import ExecutionTree, ExecutionNodeType, ExecutionStatus
 
         nested_tree = ExecutionTree()
-        nested_call_node = nested_tree.push(
+        nested_tree.push(
             ExecutionNodeType.NESTED_LLM_CALL,
-            metadata={
-                "instructions_preview": instructions[:200],
-                "context_count": len(expr_list)
-            }
+            metadata={"instructions_preview": instructions[:200], "context_count": len(expr_list)},
         )
 
         # Step 4: RECURSIVE CALL to orchestrator (will create conversation with instructions)

@@ -9,10 +9,7 @@ import os
 import logging
 
 # Setup logging for tests
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
 
 @pytest.fixture(scope="session")
@@ -31,4 +28,5 @@ def check_api_key():
 def event_loop_policy():
     """Use default event loop policy for all async tests."""
     import asyncio
+
     return asyncio.DefaultEventLoopPolicy()

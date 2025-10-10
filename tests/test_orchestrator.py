@@ -3,11 +3,12 @@ Tests for Orchestrator.
 
 Run with: uv run pytest tests/test_orchestrator.py
 """
+
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
 from sabre.server.orchestrator import Orchestrator
-from sabre.server.python_runtime import PythonRuntime, ExecutionResult
+from sabre.server.python_runtime import PythonRuntime
 from sabre.common import Assistant, TextContent, ExecutionTree
 
 
@@ -75,11 +76,7 @@ async def test_orchestrator_no_helpers():
 
     orchestrator = Orchestrator(executor, runtime)
 
-    result = await orchestrator.run(
-        conversation_id="conv_123",
-        input_text="Hello",
-        tree=tree
-    )
+    result = await orchestrator.run(conversation_id="conv_123", input_text="Hello", tree=tree)
 
     assert result.success
     assert result.final_response == "This is a plain response"
@@ -94,13 +91,17 @@ async def test_orchestrator_with_helpers():
     tree = ExecutionTree()
 
     # First call: response with helpers
-    response1 = Assistant([TextContent("""
+    response1 = Assistant(
+        [
+            TextContent("""
     Let me calculate that for you.
     <helpers>
     x = 2 + 2
     result(x)
     </helpers>
-    """)])
+    """)
+        ]
+    )
     response1.response_id = "resp_1"
 
     # Second call: response without helpers
@@ -111,11 +112,7 @@ async def test_orchestrator_with_helpers():
 
     orchestrator = Orchestrator(executor, runtime)
 
-    result = await orchestrator.run(
-        conversation_id="conv_123",
-        input_text="What is 2 + 2?",
-        tree=tree
-    )
+    result = await orchestrator.run(conversation_id="conv_123", input_text="What is 2 + 2?", tree=tree)
 
     assert result.success
     assert result.final_response == "The result is 4"
@@ -136,11 +133,7 @@ async def test_orchestrator_max_iterations():
 
     orchestrator = Orchestrator(executor, runtime, max_iterations=3)
 
-    result = await orchestrator.run(
-        conversation_id="conv_123",
-        input_text="Test",
-        tree=tree
-    )
+    result = await orchestrator.run(conversation_id="conv_123", input_text="Test", tree=tree)
 
     assert not result.success
     assert "Max iterations" in result.error

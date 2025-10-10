@@ -3,14 +3,13 @@ Python Runtime for executing <helpers> blocks.
 
 Provides isolated execution environment with helper functions.
 """
+
 import sys
 import io
 import os
 import logging
-import asyncio
-import re
 from dataclasses import dataclass, field
-from typing import Any, TYPE_CHECKING, Union, Type
+from typing import Any, TYPE_CHECKING
 
 import pandas as pd
 
@@ -24,11 +23,10 @@ from sabre.server.helpers.llm_list_bind import LLMListBind
 from sabre.server.helpers.pandas_bind import PandasBind
 from sabre.server.helpers.matplotlib_helpers import matplotlib_to_image, generate_graph_image
 from sabre.server.helpers.introspection import get_helper_signatures
-from sabre.common.utils.prompt_loader import PromptLoader
 from sabre.common.models.messages import Content, ImageContent, TextContent
 
 if TYPE_CHECKING:
-    from sabre.common.executors.response import ResponseExecutor
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +34,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ExecutionResult:
     """Result of Python code execution."""
+
     success: bool
     output: str  # Text output for display
     error: str | None
@@ -58,7 +57,8 @@ class PythonRuntime:
         # Configure matplotlib to use non-interactive backend
         try:
             import matplotlib
-            matplotlib.use('Agg')  # Non-interactive backend
+
+            matplotlib.use("Agg")  # Non-interactive backend
             logger.info("Configured matplotlib to use Agg backend")
         except ImportError:
             logger.debug("matplotlib not available")
@@ -81,33 +81,31 @@ class PythonRuntime:
         # Build namespace with helpers
         self.namespace = {
             # Class-based helpers (stateless)
-            'Bash': Bash,
-            'Search': Search,
-            'Web': Web,
-            'download': download,
-            'download_csv': download_csv,
-
+            "Bash": Bash,
+            "Search": Search,
+            "Web": Web,
+            "download": download,
+            "download_csv": download_csv,
             # Instance-based helpers (need runtime context)
-            'llm_call': llm_call,
-            'llm_bind': llm_bind,
-            'coerce': coerce,
-            'llm_list_bind': llm_list_bind,
-            'pandas_bind': pandas_bind,
-            'result': self._result,
-            'capture_figures': self._capture_figures_for_user,
-
+            "llm_call": llm_call,
+            "llm_bind": llm_bind,
+            "coerce": coerce,
+            "llm_list_bind": llm_list_bind,
+            "pandas_bind": pandas_bind,
+            "result": self._result,
+            "capture_figures": self._capture_figures_for_user,
             # Matplotlib helpers
-            'matplotlib_to_image': matplotlib_to_image,
-            'generate_graph_image': generate_graph_image,
-
+            "matplotlib_to_image": matplotlib_to_image,
+            "generate_graph_image": generate_graph_image,
             # Standard library (minimal set)
-            'print': print,
-            'pd': pd,  # pandas for user code
+            "print": print,
+            "pd": pd,  # pandas for user code
         }
 
         # Add datetime module
         import datetime
-        self.namespace['datetime'] = datetime
+
+        self.namespace["datetime"] = datetime
 
         # Storage for captured figures
         self._captured_figures: list[ImageContent] = []
@@ -115,7 +113,8 @@ class PythonRuntime:
         # Add matplotlib if available
         try:
             import matplotlib.pyplot as plt
-            self.namespace['plt'] = plt
+
+            self.namespace["plt"] = plt
             logger.debug("Added matplotlib.pyplot to namespace")
         except ImportError:
             logger.debug("matplotlib not available, skipping")
@@ -244,13 +243,13 @@ results directly when possible."""
 
                     # Save figure to BytesIO buffer
                     buf = BytesIO()
-                    fig.savefig(buf, format='png', bbox_inches='tight', dpi=100)
+                    fig.savefig(buf, format="png", bbox_inches="tight", dpi=100)
                     buf.seek(0)
 
                     # Encode as base64
                     img_data = buf.read()
                     logger.info(f"Figure {fig_num} saved, size: {len(img_data)} bytes")
-                    img_base64 = base64.b64encode(img_data).decode('utf-8')
+                    img_base64 = base64.b64encode(img_data).decode("utf-8")
 
                     # Create ImageContent object
                     img_content = ImageContent(image_data=img_base64, mime_type="image/png")
@@ -263,7 +262,7 @@ results directly when possible."""
 
             # Close all figures to free memory
             try:
-                plt.close('all')
+                plt.close("all")
                 logger.info(f"Closed all matplotlib figures, returning {len(figures)} captured images")
             except Exception as close_error:
                 logger.error(f"Error closing figures: {close_error}", exc_info=True)
@@ -313,7 +312,7 @@ results directly when possible."""
             # Build result output
             result_output = []
             for r in self._results:
-                if hasattr(r, 'get_str'):
+                if hasattr(r, "get_str"):
                     result_output.append(r.get_str())
                 else:
                     result_output.append(str(r))
@@ -353,11 +352,7 @@ results directly when possible."""
             logger.info(f"Executed code successfully, output length: {len(display_output)}, figures: {len(figures)}")
 
             return ExecutionResult(
-                success=True,
-                output=display_output.strip(),
-                error=None,
-                results=self._results.copy(),
-                content=content
+                success=True, output=display_output.strip(), error=None, results=self._results.copy(), content=content
             )
 
         except Exception as e:
@@ -370,13 +365,7 @@ results directly when possible."""
             except:
                 pass
 
-            return ExecutionResult(
-                success=False,
-                output=sys.stdout.getvalue(),
-                error=error_msg,
-                results=[],
-                content=[]
-            )
+            return ExecutionResult(success=False, output=sys.stdout.getvalue(), error=error_msg, results=[], content=[])
 
         finally:
             # Restore stdout

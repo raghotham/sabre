@@ -3,7 +3,7 @@ Matplotlib helper utilities.
 
 Provides helpers for creating and managing matplotlib figures.
 """
-import io
+
 import logging
 from typing import Dict, Any
 
@@ -37,9 +37,11 @@ class MatplotlibToImage:
     def __enter__(self):
         """Enter context - create and return figure."""
         import matplotlib
-        matplotlib.use('Agg')  # Ensure non-interactive backend
+
+        matplotlib.use("Agg")  # Ensure non-interactive backend
 
         from matplotlib import pyplot as plt
+
         plt.figure(figsize=self.figsize, dpi=self.dpi)
         return plt.gcf()
 
@@ -75,12 +77,7 @@ def matplotlib_to_image(figsize=(28.0, 18.0), dpi=130):
     return MatplotlibToImage(figsize=figsize, dpi=dpi)
 
 
-def generate_graph_image(
-    x_y_data_dict: Dict[str, Any],
-    title: str,
-    x_label: str,
-    y_label: str
-) -> str:
+def generate_graph_image(x_y_data_dict: Dict[str, Any], title: str, x_label: str, y_label: str) -> str:
     """
     Generate a simple line plot from x/y data.
 
@@ -105,7 +102,8 @@ def generate_graph_image(
         Status message (figure is auto-captured and displayed)
     """
     import matplotlib
-    matplotlib.use('Agg')  # Ensure non-interactive backend
+
+    matplotlib.use("Agg")  # Ensure non-interactive backend
 
     from matplotlib import pyplot as plt
 
@@ -119,9 +117,7 @@ def generate_graph_image(
         data_dict["y"] = list_data
     elif isinstance(x_y_data_dict, dict) and "dates" in x_y_data_dict and "prices" in x_y_data_dict:
         # Handle date/price format
-        data_dict["x"] = [
-            str(timestamp) for timestamp in x_y_data_dict["dates"]
-        ]
+        data_dict["x"] = [str(timestamp) for timestamp in x_y_data_dict["dates"]]
         data_dict["y"] = x_y_data_dict["prices"]
     elif "x" not in x_y_data_dict:
         # Use dict keys/values as x/y

@@ -6,12 +6,13 @@ Provides web content downloading with:
 - Playwright browser for JavaScript-heavy sites
 - HTML to markdown conversion
 """
+
 import asyncio
 import logging
 import re
 import unicodedata
 import warnings
-from typing import List, Dict, Any, Optional
+from typing import Any, Optional
 from markdownify import MarkdownConverter
 from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 
@@ -26,6 +27,7 @@ async def _get_browser():
     global _browser_helper
     if _browser_helper is None:
         from sabre.server.helpers.browser import BrowserHelper
+
         _browser_helper = await BrowserHelper.get_instance()
     return _browser_helper
 
@@ -108,7 +110,7 @@ def download_csv(url: str) -> str:
 
     # Set a proper User-Agent to avoid 403 Forbidden errors
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 
     try:
@@ -116,7 +118,7 @@ def download_csv(url: str) -> str:
         response.raise_for_status()
 
         # Save to temporary file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as tmp:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as tmp:
             tmp.write(response.text)
             tmp_path = tmp.name
 
@@ -155,12 +157,12 @@ def download(urls_or_results: Any) -> str:
         for item in urls_or_results:
             if isinstance(item, str):
                 urls.append(item)
-            elif isinstance(item, dict) and 'link' in item:
+            elif isinstance(item, dict) and "link" in item:
                 # Search result dict with 'link' key
-                urls.append(item['link'])
-            elif isinstance(item, dict) and 'url' in item:
+                urls.append(item["link"])
+            elif isinstance(item, dict) and "url" in item:
                 # Search result dict with 'url' key
-                urls.append(item['url'])
+                urls.append(item["url"])
 
     if not urls:
         error_msg = f"ERROR: Could not extract URLs from input: {urls_or_results}"
@@ -198,15 +200,15 @@ def _should_use_browser(url: str) -> bool:
 
     # Known static content - use HTTP for speed
     static_domains = [
-        'arxiv.org',  # Handles PDFs specially
-        'wikipedia.org',  # Server-side rendered
-        'github.com',  # Server-side rendered
-        'stackoverflow.com',  # Server-side rendered
-        'news.ycombinator.com',  # Server-side rendered
+        "arxiv.org",  # Handles PDFs specially
+        "wikipedia.org",  # Server-side rendered
+        "github.com",  # Server-side rendered
+        "stackoverflow.com",  # Server-side rendered
+        "news.ycombinator.com",  # Server-side rendered
     ]
 
     # Check if it's a static file type
-    static_extensions = ['.pdf', '.csv', '.xml', '.txt', '.json']
+    static_extensions = [".pdf", ".csv", ".xml", ".txt", ".json"]
 
     if any(url_lower.endswith(ext) for ext in static_extensions):
         return False
@@ -216,23 +218,23 @@ def _should_use_browser(url: str) -> bool:
 
     # Known JS-heavy domains that require browser rendering
     js_heavy_domains = [
-        'twitter.com',
-        'x.com',
-        'instagram.com',
-        'facebook.com',
-        'linkedin.com',
-        'tiktok.com',
-        'reddit.com',  # New Reddit UI is React-based
-        'medium.com',  # Often requires JS
-        'substack.com',  # JS-heavy
-        'notion.so',  # Fully client-side
-        'figma.com',  # Fully client-side
-        'airbnb.com',  # React SPA
-        'netflix.com',  # React SPA
-        'docs.google.com',  # JS-heavy
-        'app.',  # Common SPA subdomain pattern
-        'dashboard.',  # Common SPA subdomain pattern
-        'console.',  # Common SPA subdomain pattern
+        "twitter.com",
+        "x.com",
+        "instagram.com",
+        "facebook.com",
+        "linkedin.com",
+        "tiktok.com",
+        "reddit.com",  # New Reddit UI is React-based
+        "medium.com",  # Often requires JS
+        "substack.com",  # JS-heavy
+        "notion.so",  # Fully client-side
+        "figma.com",  # Fully client-side
+        "airbnb.com",  # React SPA
+        "netflix.com",  # React SPA
+        "docs.google.com",  # JS-heavy
+        "app.",  # Common SPA subdomain pattern
+        "dashboard.",  # Common SPA subdomain pattern
+        "console.",  # Common SPA subdomain pattern
     ]
 
     if any(domain in url_lower for domain in js_heavy_domains):
@@ -241,8 +243,8 @@ def _should_use_browser(url: str) -> bool:
 
     # Check for SPA URL patterns
     spa_patterns = [
-        '#/',  # Hash-based routing (Angular, Vue Router)
-        '#!/',  # Hash-bang routing
+        "#/",  # Hash-based routing (Angular, Vue Router)
+        "#!/",  # Hash-bang routing
     ]
 
     if any(pattern in url for pattern in spa_patterns):
@@ -254,16 +256,14 @@ def _should_use_browser(url: str) -> bool:
         import requests
 
         # Quick HEAD request to check headers (fast)
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
-        }
+        headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
 
         # Use HEAD request first (faster)
         head_response = requests.head(url, timeout=3, headers=headers, allow_redirects=True)
 
         # Check for common SPA/framework headers
-        server_header = head_response.headers.get('X-Powered-By', '').lower()
-        if any(framework in server_header for framework in ['next.js', 'nuxt', 'gatsby']):
+        server_header = head_response.headers.get("X-Powered-By", "").lower()
+        if any(framework in server_header for framework in ["next.js", "nuxt", "gatsby"]):
             logger.info(f"Detected framework in headers: {server_header}, using browser")
             return True
 
@@ -272,19 +272,19 @@ def _should_use_browser(url: str) -> bool:
         get_response = requests.get(url, timeout=5, headers=headers, stream=True)
 
         # Read only first chunk (8KB should contain <head> and framework markers)
-        content = next(get_response.iter_content(8192), b'').decode('utf-8', errors='ignore')
+        content = next(get_response.iter_content(8192), b"").decode("utf-8", errors="ignore")
 
         # Framework detection patterns in HTML
         framework_markers = [
-            'react',  # React apps often have this in scripts
-            'ng-app',  # Angular
-            'ng-version',  # Angular
-            'vue',  # Vue.js
-            '__NEXT_DATA__',  # Next.js
-            '__nuxt',  # Nuxt.js
-            'gatsby',  # Gatsby
-            'ember',  # Ember.js
-            'backbone',  # Backbone.js
+            "react",  # React apps often have this in scripts
+            "ng-app",  # Angular
+            "ng-version",  # Angular
+            "vue",  # Vue.js
+            "__NEXT_DATA__",  # Next.js
+            "__nuxt",  # Nuxt.js
+            "gatsby",  # Gatsby
+            "ember",  # Ember.js
+            "backbone",  # Backbone.js
             'root"></div><script',  # Common SPA pattern: empty root div with scripts
         ]
 
@@ -296,8 +296,8 @@ def _should_use_browser(url: str) -> bool:
 
         # Check if there's very little content in the initial HTML
         # SPAs typically have minimal HTML and load everything via JS
-        if len(content.strip()) < 1000 and '<script' in content_lower:
-            logger.info(f"Detected minimal HTML with scripts (likely SPA), using browser")
+        if len(content.strip()) < 1000 and "<script" in content_lower:
+            logger.info("Detected minimal HTML with scripts (likely SPA), using browser")
             return True
 
     except Exception as e:
@@ -343,21 +343,22 @@ class Web:
         # Use HTTP (or browser fallback)
         try:
             import requests
+
             logger.info(f"Fetching URL with HTTP: {url}")
 
             # Set a proper User-Agent to avoid 403 Forbidden errors
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
 
             response = requests.get(url, timeout=30, headers=headers)
             response.raise_for_status()
 
             # Check content type
-            content_type = response.headers.get('Content-Type', '').lower()
+            content_type = response.headers.get("Content-Type", "").lower()
             logger.info(f"Content-Type: {content_type}")
 
-            if 'application/pdf' in content_type or url.lower().endswith('.pdf'):
+            if "application/pdf" in content_type or url.lower().endswith(".pdf"):
                 # Handle PDF content
                 try:
                     import PyPDF2
@@ -452,6 +453,7 @@ class Web:
         if loop.is_running():
             # We're already in an async context - need to create task
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 future = pool.submit(asyncio.run, Web._async_get_url_with_browser(url))
                 return future.result()

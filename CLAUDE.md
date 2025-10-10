@@ -225,8 +225,8 @@ Prompts use template system with `{{variable}}` substitution:
 
 ```python
 PromptLoader.load(
-    'python_continuation_execution_responses.prompt',
-    template={'functions': helper_signatures, 'context_window_tokens': '128000'}
+    "python_continuation_execution_responses.prompt",
+    template={"functions": helper_signatures, "context_window_tokens": "128000"},
 )
 ```
 
@@ -272,7 +272,7 @@ await executor.execute(
 
 `llm_call()` creates a NEW conversation and recursively calls `orchestrator.run()`:
 
-```python
+```
 # In runtime namespace
 llm_call(['data'], 'Analyze this')
   → orchestrator.run(conversation_id=NEW, input_text=...)
@@ -287,9 +287,10 @@ Runtime uses synchronous `exec()`, but helpers can use `async`:
 
 ```python
 # In helper
-async def llm_call(...):
+async def llm_call(expression_list, instructions):
     result = await orchestrator.run(...)  # Async call
     return result
+
 
 # Runtime wraps async helpers
 if asyncio.iscoroutinefunction(helper):
@@ -314,7 +315,8 @@ if asyncio.iscoroutinefunction(helper):
 Enable debug logging:
 ```python
 import logging
-logging.getLogger('sabre.server.orchestrator').setLevel(logging.DEBUG)
+
+logging.getLogger("sabre.server.orchestrator").setLevel(logging.DEBUG)
 ```
 
 Check logs at: `~/.local/state/sabre/logs/server.log`

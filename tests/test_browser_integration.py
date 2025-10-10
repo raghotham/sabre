@@ -7,6 +7,7 @@ Tests:
 3. Framework detection
 4. Fallback behavior
 """
+
 import asyncio
 import sys
 import os
@@ -97,7 +98,7 @@ async def test_browser_fetch():
         print(f"  Content length: {len(html)} chars")
         print(f"  Contains 'Example Domain': {'Example Domain' in html}")
 
-        if 'Example Domain' in html:
+        if "Example Domain" in html:
             print("  ✓ PASS: Successfully fetched with browser")
         else:
             print("  ❌ FAIL: Content doesn't match expected")
@@ -122,7 +123,7 @@ async def test_framework_detection():
     # Test URLs that might have framework markers
     test_urls = [
         "https://nextjs.org/",  # Next.js site (might have markers)
-        "https://vuejs.org/",   # Vue.js site (might have markers)
+        "https://vuejs.org/",  # Vue.js site (might have markers)
     ]
 
     for url in test_urls:
@@ -151,7 +152,7 @@ async def test_fallback_behavior():
         print(f"  Content length: {len(content)} chars")
         print(f"  Contains 'Example Domain': {'Example Domain' in content}")
 
-        if 'Example Domain' in content:
+        if "Example Domain" in content:
             print("  ✓ PASS: Successfully fetched")
             return True
         else:
@@ -172,19 +173,19 @@ async def main():
     results = {}
 
     # Test 1: Static sites
-    results['static_sites'] = await test_static_sites()
+    results["static_sites"] = await test_static_sites()
 
     # Test 2: JS-heavy detection
-    results['js_heavy_detection'] = await test_js_heavy_detection()
+    results["js_heavy_detection"] = await test_js_heavy_detection()
 
     # Test 3: Framework detection
-    results['framework_detection'] = await test_framework_detection()
+    results["framework_detection"] = await test_framework_detection()
 
     # Test 4: Fallback behavior
-    results['fallback'] = await test_fallback_behavior()
+    results["fallback"] = await test_fallback_behavior()
 
     # Test 5: Browser fetch (optional - requires Playwright installed)
-    results['browser_fetch'] = await test_browser_fetch()
+    results["browser_fetch"] = await test_browser_fetch()
 
     # Summary
     print("\n" + "=" * 60)

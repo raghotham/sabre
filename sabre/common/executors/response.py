@@ -14,16 +14,14 @@ Key features:
 import os
 import re
 import asyncio
-from typing import Callable, Optional, Awaitable
+from typing import Callable, Awaitable
 from openai import AsyncOpenAI
 import openai
 import logging
 
 from sabre.common.models import (
     Message,
-    User,
     Assistant,
-    System,
     TextContent,
     ResponseTokenEvent,
     ResponseThinkingTokenEvent,
@@ -41,12 +39,7 @@ class ResponseExecutor:
     Executes LLM calls using OpenAI's stateful Responses API.
     """
 
-    def __init__(
-        self,
-        api_key: str | None = None,
-        base_url: str | None = None,
-        default_model: str = "gpt-4o"
-    ):
+    def __init__(self, api_key: str | None = None, base_url: str | None = None, default_model: str = "gpt-4o"):
         """
         Initialize executor.
 
@@ -159,24 +152,15 @@ class ResponseExecutor:
                 if isinstance(img, ImageContent):
                     if img.is_file_reference:
                         # Format as file reference (minimal token usage)
-                        message_content.append({
-                            "type": "file",
-                            "file_id": img.file_id
-                        })
+                        message_content.append({"type": "file", "file_id": img.file_id})
                     else:
                         # Format as base64 image_url
-                        message_content.append({
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:{img.mime_type};base64,{img.image_data}"
-                            }
-                        })
+                        message_content.append(
+                            {"type": "image_url", "image_url": {"url": f"data:{img.mime_type};base64,{img.image_data}"}}
+                        )
 
             # Wrap in message type for Responses API
-            api_input = [{
-                "type": "message",
-                "content": message_content
-            }]
+            api_input = [{"type": "message", "content": message_content}]
 
             # Count file refs vs base64 for logging
             file_refs = sum(1 for img in image_attachments if isinstance(img, ImageContent) and img.is_file_reference)
@@ -205,9 +189,14 @@ class ResponseExecutor:
         # Check conversation state before making the call
         try:
             from openai import AsyncOpenAI
-            temp_client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url) if self.base_url else AsyncOpenAI(api_key=self.api_key)
+
+            temp_client = (
+                AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
+                if self.base_url
+                else AsyncOpenAI(api_key=self.api_key)
+            )
             conv = await temp_client.conversations.retrieve(conversation_id)
-            num_turns = len(conv.turns) if hasattr(conv, 'turns') else 'unknown'
+            num_turns = len(conv.turns) if hasattr(conv, "turns") else "unknown"
             logger.info(f"Conversation {conversation_id} has {num_turns} turns before this call")
         except Exception as e:
             logger.warning(f"Could not retrieve conversation state: {e}")
@@ -224,7 +213,6 @@ class ResponseExecutor:
             input_tokens = 0
             output_tokens = 0
             reasoning_tokens = 0
-            streaming_started = False
 
             try:
                 # Create streaming response
@@ -232,8 +220,6 @@ class ResponseExecutor:
 
                 # Process stream (Responses API streaming format)
                 async for event in stream:
-                    # Mark that we've started receiving stream events
-                    streaming_started = True
                     # Get response ID
                     if event.type == "response.created":
                         response_id = event.response.id
@@ -246,14 +232,16 @@ class ResponseExecutor:
 
                         # Emit token event
                         if event_callback and tree_context:
-                            await event_callback(ResponseTokenEvent(
-                                node_id=tree_context['node_id'],
-                                parent_id=tree_context.get('parent_id'),
-                                depth=tree_context['depth'],
-                                path=tree_context['path'],
-                                conversation_id=tree_context.get('conversation_id', conversation_id),
-                                token=token,
-                            ))
+                            await event_callback(
+                                ResponseTokenEvent(
+                                    node_id=tree_context["node_id"],
+                                    parent_id=tree_context.get("parent_id"),
+                                    depth=tree_context["depth"],
+                                    path=tree_context["path"],
+                                    conversation_id=tree_context.get("conversation_id", conversation_id),
+                                    token=token,
+                                )
+                            )
 
                     # Handle reasoning/thinking tokens
                     elif event.type == "response.output_reasoning.delta":
@@ -262,14 +250,16 @@ class ResponseExecutor:
 
                         # Emit thinking token event
                         if event_callback and tree_context:
-                            await event_callback(ResponseThinkingTokenEvent(
-                                node_id=tree_context['node_id'],
-                                parent_id=tree_context.get('parent_id'),
-                                depth=tree_context['depth'],
-                                path=tree_context['path'],
-                                conversation_id=tree_context.get('conversation_id', conversation_id),
-                                token=token,
-                            ))
+                            await event_callback(
+                                ResponseThinkingTokenEvent(
+                                    node_id=tree_context["node_id"],
+                                    parent_id=tree_context.get("parent_id"),
+                                    depth=tree_context["depth"],
+                                    path=tree_context["path"],
+                                    conversation_id=tree_context.get("conversation_id", conversation_id),
+                                    token=token,
+                                )
+                            )
 
                     elif event.type == "response.completed":
                         # Extract usage stats
@@ -278,7 +268,9 @@ class ResponseExecutor:
                         output_tokens = usage.output_tokens
                         reasoning_tokens = usage.output_tokens_details.reasoning_tokens
 
-                        logger.info(f"Response done: input={input_tokens}, output={output_tokens}, reasoning={reasoning_tokens}")
+                        logger.info(
+                            f"Response done: input={input_tokens}, output={output_tokens}, reasoning={reasoning_tokens}"
+                        )
 
                 # Success - break out of retry loop
                 break
@@ -302,7 +294,11 @@ class ResponseExecutor:
                     logger.error(f"Rate limit error after {max_retries} attempts: {e}")
                     # Return empty response instead of raising
                     return Assistant(
-                        content=[TextContent(f"ERROR: Rate limit exceeded after {max_retries} retries. Please try again later.")],
+                        content=[
+                            TextContent(
+                                f"ERROR: Rate limit exceeded after {max_retries} retries. Please try again later."
+                            )
+                        ],
                         response_id=None,
                     )
 
@@ -319,31 +315,32 @@ class ResponseExecutor:
 
                 # Fall back to parsing error message
                 if wait_time is None:
-                    match = re.search(r'try again in ([\d.]+)s', error_msg)
+                    match = re.search(r"try again in ([\d.]+)s", error_msg)
                     if match:
                         wait_time = float(match.group(1)) + 1.0  # Add buffer
                     else:
                         # Exponential backoff if we can't parse retry time
-                        wait_time = (2 ** attempt) * 2  # 2, 4, 8, 16, 32 seconds
+                        wait_time = (2**attempt) * 2  # 2, 4, 8, 16, 32 seconds
 
                 logger.warning(
-                    f"Rate limit hit (attempt {attempt + 1}/{max_retries}), "
-                    f"waiting {wait_time:.1f}s before retry"
+                    f"Rate limit hit (attempt {attempt + 1}/{max_retries}), waiting {wait_time:.1f}s before retry"
                 )
 
                 # Send retry event to client (even if streaming started)
                 if event_callback and tree_context:
-                    await event_callback(ResponseRetryEvent(
-                        node_id=tree_context['node_id'],
-                        parent_id=tree_context.get('parent_id'),
-                        depth=tree_context['depth'],
-                        path=tree_context['path'],
-                        conversation_id=tree_context.get('conversation_id', conversation_id),
-                        attempt=attempt + 1,
-                        max_retries=max_retries,
-                        wait_seconds=wait_time,
-                        reason=error_msg,
-                    ))
+                    await event_callback(
+                        ResponseRetryEvent(
+                            node_id=tree_context["node_id"],
+                            parent_id=tree_context.get("parent_id"),
+                            depth=tree_context["depth"],
+                            path=tree_context["path"],
+                            conversation_id=tree_context.get("conversation_id", conversation_id),
+                            attempt=attempt + 1,
+                            max_retries=max_retries,
+                            wait_seconds=wait_time,
+                            reason=error_msg,
+                        )
+                    )
 
                 # Sleep before retrying
                 await asyncio.sleep(wait_time)
@@ -375,7 +372,9 @@ class ResponseExecutor:
             reasoning_tokens=reasoning_tokens,
         )
 
-        logger.info(f"Response complete: {len(response_text)} chars, response_id={response_id}, tokens=({input_tokens} in, {output_tokens} out, {reasoning_tokens} reasoning)")
+        logger.info(
+            f"Response complete: {len(response_text)} chars, response_id={response_id}, tokens=({input_tokens} in, {output_tokens} out, {reasoning_tokens} reasoning)"
+        )
 
         return assistant
 

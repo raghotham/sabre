@@ -37,11 +37,25 @@ import typing
 import textwrap
 from collections import Counter
 from enum import Enum, IntEnum
-from functools import reduce
 from importlib import resources
 from itertools import cycle, islice
 from logging import Logger
-from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Generator, Iterator, List, Optional, Tuple, Union, Tuple, cast, get_args, get_origin, Union
+from typing import (
+    Any,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Dict,
+    Generator,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    cast,
+    get_args,
+    get_origin,
+    Union,
+)
 
 from urllib.parse import urljoin, urlparse
 from markdownify import markdownify as md
@@ -55,28 +69,41 @@ from docstring_parser import parse
 from PIL import Image
 import pyte
 
-from llmvm.common.objects import (AstNode, Content, FunctionCall, ImageContent, MarkdownContent, HTMLContent,
-                                  Message, PandasMeta, Statement, StreamNode, SupportedMessageContent, System, TextContent, TokenPriceCalculator, User, Executor)
+from llmvm.common.objects import (
+    AstNode,
+    Content,
+    FunctionCall,
+    ImageContent,
+    MarkdownContent,
+    Message,
+    PandasMeta,
+    Statement,
+    StreamNode,
+    SupportedMessageContent,
+    System,
+    TextContent,
+    TokenPriceCalculator,
+    User,
+    Executor,
+)
 from llmvm.common.container import Container
 
 
 def write_client_stream(obj):
-    import logging
-
     # Convert bytes to StreamNode if needed
 
     if isinstance(obj, bytes):
-        obj = StreamNode(obj, type='bytes')
+        obj = StreamNode(obj, type="bytes")
 
     frame = inspect.currentframe()
     while frame:
         # Check if 'self' exists in the frame's local namespace
-        if 'stream_handler' in frame.f_locals:
-            asyncio.run(frame.f_locals['stream_handler'](obj))
+        if "stream_handler" in frame.f_locals:
+            asyncio.run(frame.f_locals["stream_handler"](obj))
             return
 
-        instance = frame.f_locals.get('self', None)
-        if hasattr(instance, 'stream_handler'):
+        instance = frame.f_locals.get("self", None)
+        if hasattr(instance, "stream_handler"):
             asyncio.run(instance.stream_handler(obj))  # type: ignore
             return
         frame = frame.f_back
@@ -88,17 +115,17 @@ def get_stream_handler() -> Optional[Callable[[AstNode], Awaitable[None]]]:
     frame = inspect.currentframe()
     while frame:
         # Check if 'self' exists in the frame's local namespace
-        if 'stream_handler' in frame.f_locals:
-            return frame.f_locals['stream_handler']
+        if "stream_handler" in frame.f_locals:
+            return frame.f_locals["stream_handler"]
 
-        instance = frame.f_locals.get('self', None)
-        if hasattr(instance, 'stream_handler'):
+        instance = frame.f_locals.get("self", None)
+        if hasattr(instance, "stream_handler"):
             return instance.stream_handler  # type: ignore
         frame = frame.f_back
     return None
 
 
-CSI_RE = re.compile(rb'\x1b\[[0-?]*[ -/]*[@-~]')
+CSI_RE = re.compile(rb"\x1b\[[0-?]*[ -/]*[@-~]")
 
 
 def _winsize():
@@ -107,23 +134,22 @@ def _winsize():
 
 
 def _set_winsize(fd, rows, cols):
-    fcntl.ioctl(fd, termios.TIOCSWINSZ,
-                struct.pack("HHHH", rows, cols, 0, 0))
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
 
 
 _SENTINEL = ast.Constant(value=None)
+
 
 class LateBindDefaults(ast.NodeTransformer):
     def visit_FunctionDef(self, node: ast.FunctionDef) -> ast.FunctionDef:
         new_body = list(node.body)  # copy so we can prepend
 
-        for idx, (arg, default) in enumerate(
-                zip(node.args.args[-len(node.args.defaults):], node.args.defaults)):
-
-            if (isinstance(default, ast.Call)
+        for idx, (arg, default) in enumerate(zip(node.args.args[-len(node.args.defaults) :], node.args.defaults)):
+            if (
+                isinstance(default, ast.Call)
                 and isinstance(default.func, ast.Name)
-                and default.func.id == "llm_var_bind"):
-
+                and default.func.id == "llm_var_bind"
+            ):
                 # 1. replace the eager default with None
                 node.args.defaults[idx] = _SENTINEL
 
@@ -134,11 +160,8 @@ class LateBindDefaults(ast.NodeTransformer):
                         ops=[ast.Is()],
                         comparators=[ast.Constant(value=None)],
                     ),
-                    body=[ast.Assign(
-                        targets=[ast.Name(id=arg.arg, ctx=ast.Store())],
-                        value=default
-                    )],
-                    orelse=[]
+                    body=[ast.Assign(targets=[ast.Name(id=arg.arg, ctx=ast.Store())], value=default)],
+                    orelse=[],
                 )
                 new_body.insert(0, assign)
 
@@ -146,8 +169,7 @@ class LateBindDefaults(ast.NodeTransformer):
         return node
 
 
-class Helpers():
-
+class Helpers:
     @staticmethod
     def get_executor(
         executor_name: Optional[str] = None,
@@ -158,73 +180,110 @@ class Helpers():
         api_endpoint: Optional[str] = None,
     ) -> Executor:
         if not executor_name:
-            executor_name = Container().get_config_variable('executor', 'LLMVM_EXECUTOR', default='')
+            executor_name = Container().get_config_variable("executor", "LLMVM_EXECUTOR", default="")
 
         if not executor_name:
-            raise EnvironmentError('No executor specified in environment (LLMVM_EXECUTOR) or config file')
+            raise EnvironmentError("No executor specified in environment (LLMVM_EXECUTOR) or config file")
 
         # LLMVM_EXECUTOR_API_BASE overrides the default API endpoint for each executor
-        if not api_endpoint and Container().get_config_variable('LLMVM_EXECUTOR_API_BASE', default=''):
-            api_endpoint = Container().get_config_variable('LLMVM_EXECUTOR_API_BASE', default='')
+        if not api_endpoint and Container().get_config_variable("LLMVM_EXECUTOR_API_BASE", default=""):
+            api_endpoint = Container().get_config_variable("LLMVM_EXECUTOR_API_BASE", default="")
 
-        default_model_config = default_model_name or Container().get_config_variable(f'default_{executor_name}_model', 'LLMVM_MODEL', '')
+        default_model_config = default_model_name or Container().get_config_variable(
+            f"default_{executor_name}_model", "LLMVM_MODEL", ""
+        )
 
-        override_max_input_len = Container().get_config_variable('override_max_input_tokens', 'LLMVM_OVERRIDE_MAX_INPUT_TOKENS', default=None)
-        override_max_output_len = Container().get_config_variable('override_max_output_tokens', 'LLMVM_OVERRIDE_MAX_OUTPUT_TOKENS', default=None)
+        override_max_input_len = Container().get_config_variable(
+            "override_max_input_tokens", "LLMVM_OVERRIDE_MAX_INPUT_TOKENS", default=None
+        )
+        override_max_output_len = Container().get_config_variable(
+            "override_max_output_tokens", "LLMVM_OVERRIDE_MAX_OUTPUT_TOKENS", default=None
+        )
 
         executor_instance: Executor
 
-        if not api_key and Container().get_config_variable('LLMVM_EXECUTOR_API_KEY', default=''):
-            api_key = Container().get_config_variable('LLMVM_EXECUTOR_API_KEY', default='')
+        if not api_key and Container().get_config_variable("LLMVM_EXECUTOR_API_KEY", default=""):
+            api_key = Container().get_config_variable("LLMVM_EXECUTOR_API_KEY", default="")
 
-        if executor_name == 'anthropic':
+        if executor_name == "anthropic":
             from llmvm.common.anthropic_executor import AnthropicExecutor
 
             executor_instance = AnthropicExecutor(
-                api_key=api_key or os.environ.get('ANTHROPIC_API_KEY', ''),
+                api_key=api_key or os.environ.get("ANTHROPIC_API_KEY", ""),
                 default_model=default_model_config,
-                api_endpoint=api_endpoint or Container().get_config_variable('anthropic_api_base', 'ANTHROPIC_API_BASE', 'https://api.anthropic.com/v1'),
-                default_max_input_len=max_input_tokens or override_max_input_len or TokenPriceCalculator().max_input_tokens(default_model_config, executor='anthropic', default=200000),
-                default_max_output_len=max_output_tokens or override_max_output_len or TokenPriceCalculator().max_output_tokens(default_model_config, executor='anthropic', default=8192),
+                api_endpoint=api_endpoint
+                or Container().get_config_variable(
+                    "anthropic_api_base", "ANTHROPIC_API_BASE", "https://api.anthropic.com/v1"
+                ),
+                default_max_input_len=max_input_tokens
+                or override_max_input_len
+                or TokenPriceCalculator().max_input_tokens(default_model_config, executor="anthropic", default=200000),
+                default_max_output_len=max_output_tokens
+                or override_max_output_len
+                or TokenPriceCalculator().max_output_tokens(default_model_config, executor="anthropic", default=8192),
             )
-        elif executor_name == 'gemini':
+        elif executor_name == "gemini":
             from llmvm.common.gemini_executor import GeminiExecutor
 
             executor_instance = GeminiExecutor(
-                api_key=api_key or os.environ.get('GEMINI_API_KEY', ''),
+                api_key=api_key or os.environ.get("GEMINI_API_KEY", ""),
                 default_model=default_model_config,
-                api_endpoint=api_endpoint or Container().get_config_variable('gemini_api_base', 'GEMINI_API_BASE', 'https://generativelanguage.googleapis.com/v1beta/openai/'),
-                default_max_input_len=max_input_tokens or override_max_input_len or TokenPriceCalculator().max_input_tokens(default_model_config, executor='gemini', default=2000000),
-                default_max_output_len=max_output_tokens or override_max_output_len or TokenPriceCalculator().max_output_tokens(default_model_config, executor='gemini', default=8192),
+                api_endpoint=api_endpoint
+                or Container().get_config_variable(
+                    "gemini_api_base", "GEMINI_API_BASE", "https://generativelanguage.googleapis.com/v1beta/openai/"
+                ),
+                default_max_input_len=max_input_tokens
+                or override_max_input_len
+                or TokenPriceCalculator().max_input_tokens(default_model_config, executor="gemini", default=2000000),
+                default_max_output_len=max_output_tokens
+                or override_max_output_len
+                or TokenPriceCalculator().max_output_tokens(default_model_config, executor="gemini", default=8192),
             )
-        elif executor_name == 'deepseek':
+        elif executor_name == "deepseek":
             from llmvm.common.deepseek_executor import DeepSeekExecutor
 
             executor_instance = DeepSeekExecutor(
-                api_key=api_key or os.environ.get('DEEPSEEK_API_KEY', ''),
+                api_key=api_key or os.environ.get("DEEPSEEK_API_KEY", ""),
                 default_model=default_model_config,
-                api_endpoint=api_endpoint or Container().get_config_variable('deepseek_api_base', 'DEEPSEEK_API_BASE', 'https://api.deepseek.com/v1'),
-                default_max_input_len=max_input_tokens or override_max_input_len or TokenPriceCalculator().max_input_tokens(default_model_config, executor='deepseek', default=64000),
-                default_max_output_len=max_output_tokens or override_max_output_len or TokenPriceCalculator().max_output_tokens(default_model_config, executor='deepseek', default=4096),
+                api_endpoint=api_endpoint
+                or Container().get_config_variable(
+                    "deepseek_api_base", "DEEPSEEK_API_BASE", "https://api.deepseek.com/v1"
+                ),
+                default_max_input_len=max_input_tokens
+                or override_max_input_len
+                or TokenPriceCalculator().max_input_tokens(default_model_config, executor="deepseek", default=64000),
+                default_max_output_len=max_output_tokens
+                or override_max_output_len
+                or TokenPriceCalculator().max_output_tokens(default_model_config, executor="deepseek", default=4096),
             )
-        elif executor_name == 'bedrock':
+        elif executor_name == "bedrock":
             from llmvm.common.bedrock_executor import BedrockExecutor
 
             executor_instance = BedrockExecutor(
-                api_key='',
+                api_key="",
                 default_model=default_model_config,
-                default_max_input_len=max_input_tokens or override_max_input_len or TokenPriceCalculator().max_input_tokens(default_model_config, executor='bedrock', default=300000),
-                default_max_output_len=max_output_tokens or override_max_output_len or TokenPriceCalculator().max_output_tokens(default_model_config, executor='bedrock', default=4096),
-                region_name=Container().get_config_variable('bedrock_api_base', 'BEDROCK_API_BASE'),
+                default_max_input_len=max_input_tokens
+                or override_max_input_len
+                or TokenPriceCalculator().max_input_tokens(default_model_config, executor="bedrock", default=300000),
+                default_max_output_len=max_output_tokens
+                or override_max_output_len
+                or TokenPriceCalculator().max_output_tokens(default_model_config, executor="bedrock", default=4096),
+                region_name=Container().get_config_variable("bedrock_api_base", "BEDROCK_API_BASE"),
             )
-        elif executor_name == 'response':
+        elif executor_name == "response":
             from llmvm.common.response_executor import ResponseExecutor
+
             executor_instance = ResponseExecutor(
-                api_key=api_key or os.environ.get('OPENAI_API_KEY', ''),
+                api_key=api_key or os.environ.get("OPENAI_API_KEY", ""),
                 default_model=default_model_config,
-                api_endpoint=api_endpoint or Container().get_config_variable('openai_api_base', 'OPENAI_API_BASE', 'https://api.openai.com/v1'),
-                default_max_input_len=max_input_tokens or override_max_input_len or TokenPriceCalculator().max_input_tokens(default_model_config, executor='response', default=4000000),
-                default_max_output_len=max_output_tokens or override_max_output_len or TokenPriceCalculator().max_output_tokens(default_model_config, executor='response', default=128000),
+                api_endpoint=api_endpoint
+                or Container().get_config_variable("openai_api_base", "OPENAI_API_BASE", "https://api.openai.com/v1"),
+                default_max_input_len=max_input_tokens
+                or override_max_input_len
+                or TokenPriceCalculator().max_input_tokens(default_model_config, executor="response", default=4000000),
+                default_max_output_len=max_output_tokens
+                or override_max_output_len
+                or TokenPriceCalculator().max_output_tokens(default_model_config, executor="response", default=128000),
             )
         else:
             # openai is the only one we'd change the api_endpoint for, given everyone provides
@@ -232,41 +291,39 @@ class Helpers():
             from llmvm.common.openai_executor import OpenAIExecutor
 
             executor_instance = OpenAIExecutor(
-                api_key=api_key or os.environ.get('OPENAI_API_KEY', ''),
+                api_key=api_key or os.environ.get("OPENAI_API_KEY", ""),
                 default_model=default_model_config,
-                api_endpoint=api_endpoint or Container().get_config_variable('openai_api_base', 'OPENAI_API_BASE', 'https://api.openai.com/v1'),
-                default_max_input_len=max_input_tokens or override_max_input_len or TokenPriceCalculator().max_input_tokens(default_model_config, executor='openai', default=128000),
-                default_max_output_len=max_output_tokens or override_max_output_len or TokenPriceCalculator().max_output_tokens(default_model_config, executor='openai', default=4096),
+                api_endpoint=api_endpoint
+                or Container().get_config_variable("openai_api_base", "OPENAI_API_BASE", "https://api.openai.com/v1"),
+                default_max_input_len=max_input_tokens
+                or override_max_input_len
+                or TokenPriceCalculator().max_input_tokens(default_model_config, executor="openai", default=128000),
+                default_max_output_len=max_output_tokens
+                or override_max_output_len
+                or TokenPriceCalculator().max_output_tokens(default_model_config, executor="openai", default=4096),
             )
         return executor_instance
 
     @staticmethod
     def get_controller(
-            thread_id: int = 0,
-            executor: Optional[str] = None,
-            default_model_name: Optional[str] = None,
-            max_input_tokens: Optional[int] = None,
-            max_output_tokens: Optional[int] = None,
-            api_key: Optional[str] = None,
-            api_endpoint: Optional[str] = None
-        ) -> 'ExecutionController':
+        thread_id: int = 0,
+        executor: Optional[str] = None,
+        default_model_name: Optional[str] = None,
+        max_input_tokens: Optional[int] = None,
+        max_output_tokens: Optional[int] = None,
+        api_key: Optional[str] = None,
+        api_endpoint: Optional[str] = None,
+    ):  # Returns ExecutionController
         executor_instance = Helpers.get_executor(
-            executor,
-            default_model_name,
-            max_input_tokens,
-            max_output_tokens,
-            api_key,
-            api_endpoint
+            executor, default_model_name, max_input_tokens, max_output_tokens, api_key, api_endpoint
         )
         from llmvm.server.python_execution_controller import ExecutionController
-        return ExecutionController(
-            executor=executor_instance,
-            thread_id=thread_id
-        )
+
+        return ExecutionController(executor=executor_instance, thread_id=thread_id)
 
     @staticmethod
     def dump_assertion(assertion: Callable[[], bool]) -> str:
-        result = ''
+        result = ""
         try:
             src = textwrap.dedent(inspect.getsource(assertion)).strip()
             header = "assertion source"
@@ -284,9 +341,9 @@ class Helpers():
         result += "\n── captured variables ──"
         cvars = inspect.getclosurevars(assertion)
         captured = {
-            "globals"   : cvars.globals,
-            "nonlocals" : cvars.nonlocals,
-            "builtins"  : {k: v for k, v in cvars.builtins.items() if k in cvars.unbound},
+            "globals": cvars.globals,
+            "nonlocals": cvars.nonlocals,
+            "builtins": {k: v for k, v in cvars.builtins.items() if k in cvars.unbound},
         }
         result += pprint.pformat(captured, compact=True, sort_dicts=False)
         return result
@@ -339,10 +396,10 @@ class Helpers():
 
     @staticmethod
     def dill_to_b64(obj, *, compress=False, protocol=None) -> str:
-        raw = dill.dumps(obj, protocol=protocol)           # bytes
+        raw = dill.dumps(obj, protocol=protocol)  # bytes
         if compress:
             raw = gzip.compress(raw)
-        return base64.b64encode(raw).decode("ascii")       # ASCII
+        return base64.b64encode(raw).decode("ascii")  # ASCII
 
     @staticmethod
     def b64_to_dill(b64_string: str, *, compressed=False):
@@ -367,17 +424,16 @@ class Helpers():
         master, slave = pty.openpty()
 
         _set_winsize(slave, *_winsize())
-        signal.signal(signal.SIGWINCH,
-                    lambda *_: _set_winsize(slave, *_winsize()))
+        signal.signal(signal.SIGWINCH, lambda *_: _set_winsize(slave, *_winsize()))
 
-        proc = subprocess.Popen(cmd, shell=True,
-                                stdin=slave, stdout=slave, stderr=slave,
-                                close_fds=True, preexec_fn=os.setsid, text=False)
+        proc = subprocess.Popen(
+            cmd, shell=True, stdin=slave, stdout=slave, stderr=slave, close_fds=True, preexec_fn=os.setsid, text=False
+        )
         os.close(slave)
 
         sel = selectors.DefaultSelector()
         sel.register(master, selectors.EVENT_READ)
-        captured  = bytearray()
+        captured = bytearray()
 
         try:
             while True:
@@ -397,32 +453,32 @@ class Helpers():
             os.close(master)
             proc.wait()
 
-        tui = captured.count(b'\x1b') / max(1, len(captured)) >= tui_threshold
+        tui = captured.count(b"\x1b") / max(1, len(captured)) >= tui_threshold
 
         if tui:
             scr, stream = pyte.Screen(*_winsize()), pyte.Stream(pyte.Screen(0, 0))
             stream.screen = scr  # type: ignore
-            stream.feed(captured.decode('utf‑8', 'ignore'))
+            stream.feed(captured.decode("utf‑8", "ignore"))
             return "\n".join(scr.display)
 
         try:
-            os.system('reset')
+            os.system("reset")
         except Exception:
             pass
 
-        return CSI_RE.sub(b'', captured).replace(b'\r', b'').decode('utf‑8', errors='replace')
+        return CSI_RE.sub(b"", captured).replace(b"\r", b"").decode("utf‑8", errors="replace")
 
     @staticmethod
     def serialize_locals_dict(locals_dict: dict[str, Any]) -> dict[str, Any]:
         temp_dict = {}
         for key, value in locals_dict.items():
-            if isinstance(key, str) and key.startswith('__'):
+            if isinstance(key, str) and key.startswith("__"):
                 continue
-            elif isinstance(value, types.FunctionType) and value.__module__ == 'builtins':
+            elif isinstance(value, types.FunctionType) and value.__module__ == "builtins":
                 continue
-            elif key == 'AutoGlobalDict':
+            elif key == "AutoGlobalDict":
                 continue
-            elif isinstance(value, types.FunctionType) and value.__code__.co_filename == '<ast>':
+            elif isinstance(value, types.FunctionType) and value.__code__.co_filename == "<ast>":
                 temp_dict[key] = Helpers.serialize_function(value)
             elif isinstance(value, dict):
                 temp_dict[key] = Helpers.serialize_locals_dict(value)
@@ -439,14 +495,14 @@ class Helpers():
                 except:
                     # keep instances of tools alive until the server winds down
                     # if not isinstance(value, types.MethodType) and not isinstance(value, types.FunctionType):
-                        # self.locals_instance_state.append(InstanceState(thread_id=thread_id, locals_dict=value))
+                    # self.locals_instance_state.append(InstanceState(thread_id=thread_id, locals_dict=value))
                     # actual functions can't be json serialized so we pass here
                     pass
         return temp_dict
 
     @staticmethod
     def serialize_item(item):
-        if isinstance(item, types.FunctionType) and item.__code__.co_filename == '<ast>':
+        if isinstance(item, types.FunctionType) and item.__code__.co_filename == "<ast>":
             return Helpers.serialize_function(item)
         elif isinstance(item, (str, int, float, bool)):
             return item
@@ -463,7 +519,7 @@ class Helpers():
             except:
                 # keep instances of tools alive until the server winds down
                 # if not isinstance(item, types.MethodType) and not isinstance(item, types.FunctionType):
-                    # self.locals_instance_state.append(InstanceState(thread_id=thread_id, locals_dict=item))
+                # self.locals_instance_state.append(InstanceState(thread_id=thread_id, locals_dict=item))
                 # actual functions can't be json serialized so we pass here
                 pass
 
@@ -474,19 +530,19 @@ class Helpers():
         # Serialize the function's code object
         code_bytes = marshal.dumps(func.__code__)
         return {
-            'type': 'function',
-            'name': func.__name__,
-            'code': base64.b64encode(code_bytes).decode('ascii'),
-            'defaults': func.__defaults__,
-            'closure': func.__closure__,
-            'doc': func.__doc__,
-            'annotations': func.__annotations__,
-            'is_method': not is_static or cls is not None,
-            'class_name': cls.__name__ if cls else None,
-            'is_static_method': is_static and cls is not None,
-            'qualname': func.__qualname__,
-            'module': func.__module__,
-            'from_ast': func.__code__.co_filename == '<ast>',
+            "type": "function",
+            "name": func.__name__,
+            "code": base64.b64encode(code_bytes).decode("ascii"),
+            "defaults": func.__defaults__,
+            "closure": func.__closure__,
+            "doc": func.__doc__,
+            "annotations": func.__annotations__,
+            "is_method": not is_static or cls is not None,
+            "class_name": cls.__name__ if cls else None,
+            "is_static_method": is_static and cls is not None,
+            "qualname": func.__qualname__,
+            "module": func.__module__,
+            "from_ast": func.__code__.co_filename == "<ast>",
         }
 
     @staticmethod
@@ -494,7 +550,7 @@ class Helpers():
         result = {}
         # First pass: Create all basic items to establish the namespace
         for key, value in serialized_dict.items():
-            if isinstance(value, dict) and value.get('type') == 'function':
+            if isinstance(value, dict) and value.get("type") == "function":
                 # Skip functions on first pass
                 continue
             elif isinstance(value, dict):
@@ -506,7 +562,7 @@ class Helpers():
 
         # Second pass: Now handle functions with the established namespace
         for key, value in serialized_dict.items():
-            if isinstance(value, dict) and value.get('type') == 'function':
+            if isinstance(value, dict) and value.get("type") == "function":
                 result[key] = Helpers.deserialize_function(value, result)
 
         return result
@@ -516,11 +572,11 @@ class Helpers():
         if context is None:
             context = globals()
 
-        if isinstance(item, dict) and item.get('type') == 'function':
+        if isinstance(item, dict) and item.get("type") == "function":
             return Helpers.deserialize_function(item, context)
         elif isinstance(item, list):
             return [Helpers.deserialize_item(v, context) for v in item]
-        elif isinstance(item, dict) and 'type' not in item:
+        elif isinstance(item, dict) and "type" not in item:
             return Helpers.deserialize_locals_dict(item)
         else:
             return item
@@ -528,44 +584,37 @@ class Helpers():
     @staticmethod
     def deserialize_function(func_dict, context):
         # Deserialize the function's code object
-        code_bytes = base64.b64decode(func_dict['code'])
+        code_bytes = base64.b64decode(func_dict["code"])
         code = marshal.loads(code_bytes)
 
         # Recreate the function with proper context
-        func = types.FunctionType(
-            code,
-            context,
-            func_dict['name'],
-            func_dict['defaults'],
-            func_dict['closure']
-        )
+        func = types.FunctionType(code, context, func_dict["name"], func_dict["defaults"], func_dict["closure"])
 
         # Restore all additional attributes that were serialized
-        if 'doc' in func_dict:
-            func.__doc__ = func_dict['doc']
-        if 'annotations' in func_dict:
-            func.__annotations__ = func_dict['annotations']
-        if 'qualname' in func_dict:
-            func.__qualname__ = func_dict['qualname']
-        if 'module' in func_dict:
-            func.__module__ = func_dict['module']
-        if 'from_ast' in func_dict and func_dict['from_ast']:
+        if "doc" in func_dict:
+            func.__doc__ = func_dict["doc"]
+        if "annotations" in func_dict:
+            func.__annotations__ = func_dict["annotations"]
+        if "qualname" in func_dict:
+            func.__qualname__ = func_dict["qualname"]
+        if "module" in func_dict:
+            func.__module__ = func_dict["module"]
+        if "from_ast" in func_dict and func_dict["from_ast"]:
             func._from_ast = True  # type: ignore
 
         # Handle class methods properly
-        if func_dict.get('is_method') and func_dict.get('class_name'):
-            class_name = func_dict['class_name']
+        if func_dict.get("is_method") and func_dict.get("class_name"):
+            class_name = func_dict["class_name"]
             if class_name in context:
-                cls = context[class_name]
                 # Handle static methods
-                if func_dict.get('is_static_method'):
+                if func_dict.get("is_static_method"):
                     func = staticmethod(func)
         return func
 
     @staticmethod
     def get_class_name_of_method(func) -> Optional[str]:
         # Case 1: Bound instance method => __self__ is the instance
-        if hasattr(func, '__self__') and func.__self__ is not None:
+        if hasattr(func, "__self__") and func.__self__ is not None:
             # For a regular bound method, __self__ is the instance
             # For a bound classmethod, __self__ is the class
             cls = func.__self__ if inspect.isclass(func.__self__) else func.__self__.__class__
@@ -574,9 +623,9 @@ class Helpers():
         # Case 2: If it's a function or staticmethod, check __qualname__
         # __qualname__ often looks like "MyClass.my_method" or "MyClass.NestedClass.my_method"
         # If there's only one dot or none, it might just be "my_function" or something else.
-        qualname = getattr(func, '__qualname__', None)
-        if qualname and '.' in qualname:
-            parts = qualname.split('.')
+        qualname = getattr(func, "__qualname__", None)
+        if qualname and "." in qualname:
+            parts = qualname.split(".")
             # The last part is the function name; the rest are nested scopes/classes.
             # e.g. "MyClass.my_method" => ["MyClass", "my_method"]
             # or   "MyClass.InnerClass.my_method" => ["MyClass", "InnerClass", "my_method"]
@@ -631,7 +680,7 @@ class Helpers():
          - The docstring (`description`)
         """
         # Special handling for MCPToolWrapper
-        if hasattr(function, 'get_function_description'):
+        if hasattr(function, "get_function_description"):
             return function.get_function_description()
 
         docstring = inspect.getdoc(function) or ""
@@ -649,7 +698,7 @@ class Helpers():
             parameters.append(param_name)
             types.append(param_type_str)
 
-        return_annotation = type_hints.get('return', signature.return_annotation)
+        return_annotation = type_hints.get("return", signature.return_annotation)
         return_type = return_annotation if return_annotation != inspect.Signature.empty else None
 
         # Check if the function is async
@@ -675,12 +724,12 @@ class Helpers():
         Returns a tuple: (is_static_method: bool, owning_class_or_None)
         """
         # Special handling for MCPToolWrapper
-        if hasattr(func, 'get_function_description'):
+        if hasattr(func, "get_function_description"):
             # MCP tools are standalone functions, not methods
             return (True, None)
 
         # Attempt to discover the class (if bound method)
-        cls_candidate = getattr(func, '__self__', None)
+        cls_candidate = getattr(func, "__self__", None)
         if cls_candidate is not None:
             # if it's an instance, get its class
             if not inspect.isclass(cls_candidate):
@@ -731,13 +780,10 @@ class Helpers():
         including docstring (inline) and whether it's static or can be instantiated.
         """
         description = Helpers.get_function_description_new(function, openai_format=False)
-        parameter_type_list = [
-            f"{param}: {typ}"
-            for param, typ in zip(description['parameters'], description['types'])
-        ]
+        parameter_type_list = [f"{param}: {typ}" for param, typ in zip(description["parameters"], description["types"])]
 
         # Handle return type string
-        return_annotation = description['return_type']
+        return_annotation = description["return_type"]
         if return_annotation is None:
             return_type_str = "Any"
         else:
@@ -752,29 +798,29 @@ class Helpers():
             # e.g.: def my_method(a: int, b: str) -> int  # Instantiate with MyClass(). Doc here
             async_prefix = "async " if description.get("is_async", False) else ""
             return (
-                f'{async_prefix}def {description["invoked_by"]}({", ".join(parameter_type_list)}) -> {return_type_str}  # Instantiate with {cls.__name__}().\n'
+                f"{async_prefix}def {description['invoked_by']}({', '.join(parameter_type_list)}) -> {return_type_str}  # Instantiate with {cls.__name__}().\n"
                 f'    """\n'
-                f'{textwrap.indent(doc, " " * 4)}\n'
+                f"{textwrap.indent(doc, ' ' * 4)}\n"
                 f'    """\n'
             )
         elif description.get("class_name") is None:
             # Standalone function (like MCP tools)
             async_prefix = "async " if description.get("is_async", False) else ""
             return (
-                f'{async_prefix}def {description["invoked_by"]}({", ".join(parameter_type_list)}) -> {return_type_str}\n'
+                f"{async_prefix}def {description['invoked_by']}({', '.join(parameter_type_list)}) -> {return_type_str}\n"
                 f'    """\n'
-                f'{textwrap.indent(doc, " " * 4)}\n'
+                f"{textwrap.indent(doc, ' ' * 4)}\n"
                 f'    """\n'
             )
         else:
             # Static method or function with a class
             async_prefix = "async " if description.get("is_async", False) else ""
             return (
-                f'class {description["class_name"]}:\n'
-                f'    @staticmethod\n'
-                f'    {async_prefix}def {description["invoked_by"]}({", ".join(parameter_type_list)}) -> {return_type_str}\n'
+                f"class {description['class_name']}:\n"
+                f"    @staticmethod\n"
+                f"    {async_prefix}def {description['invoked_by']}({', '.join(parameter_type_list)}) -> {return_type_str}\n"
                 f'        """\n'
-                f'{textwrap.indent(doc, " " * 8)}\n'
+                f"{textwrap.indent(doc, ' ' * 8)}\n"
                 f'        """\n'
             )
 
@@ -788,15 +834,17 @@ class Helpers():
         if system == "Darwin":  # macOS
             chrome_paths = [
                 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-                os.path.expanduser("~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+                os.path.expanduser("~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
             ]
 
             for path in chrome_paths:
                 if os.path.exists(path):
-                    subprocess.Popen([path, file_url],
-                                    start_new_session=True,  # Detaches the process
-                                    stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.DEVNULL)
+                    subprocess.Popen(
+                        [path, file_url],
+                        start_new_session=True,  # Detaches the process
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
                     return True, filename
 
         elif system == "Linux":
@@ -805,20 +853,21 @@ class Helpers():
             for cmd in chrome_commands:
                 try:
                     # Check if the command exists
-                    which_result = subprocess.run(["which", cmd],
-                                                stdout=subprocess.PIPE,
-                                                stderr=subprocess.PIPE,
-                                                text=True)
+                    which_result = subprocess.run(
+                        ["which", cmd], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+                    )
 
                     if which_result.returncode == 0:
                         chrome_path = which_result.stdout.strip()
                         # Use subprocess.Popen to avoid waiting for the browser to close
-                        subprocess.Popen([chrome_path, file_url],
-                                        start_new_session=True,  # Detaches the process
-                                        stdout=subprocess.DEVNULL,
-                                        stderr=subprocess.DEVNULL)
+                        subprocess.Popen(
+                            [chrome_path, file_url],
+                            start_new_session=True,  # Detaches the process
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                        )
                         return True, filename
-                except Exception as e:
+                except Exception:
                     continue
 
     @staticmethod
@@ -826,11 +875,11 @@ class Helpers():
         temp_file = None
         if not filename:
             try:
-                fd, temp_path = tempfile.mkstemp(suffix='.html')
-                with os.fdopen(fd, 'w') as f:
+                fd, temp_path = tempfile.mkstemp(suffix=".html")
+                with os.fdopen(fd, "w") as f:
                     f.write(html_content)
                 temp_file = temp_path
-            except Exception as e:
+            except Exception:
                 return False, None
         else:
             temp_file = filename
@@ -859,7 +908,7 @@ class Helpers():
             if (
                 isinstance(message, User)
                 and all([isinstance(c, TextContent) for c in message.message])
-                and not '<helpers' in message.get_str()
+                and not "<helpers" in message.get_str()
             ):
                 user_messages.append(message.get_str()[0:500])
         return user_messages
@@ -867,8 +916,9 @@ class Helpers():
     @staticmethod
     def matplotlib_figure_to_image_content(fig, dpi=130):
         import matplotlib.pyplot as plt
+
         buffer = io.BytesIO()
-        fig.savefig(buffer, format='png', dpi=dpi, bbox_inches='tight')
+        fig.savefig(buffer, format="png", dpi=dpi, bbox_inches="tight")
         plt.close(fig)
         image_bytes = buffer.getvalue()
         buffer.close()
@@ -879,7 +929,7 @@ class Helpers():
         if not callable(callable_obj):
             raise ValueError("Provided object must be callable")
 
-        qualname_parts = callable_obj.__qualname__.split('.')
+        qualname_parts = callable_obj.__qualname__.split(".")
         if len(qualname_parts) < 2:
             return None
 
@@ -912,11 +962,11 @@ class Helpers():
 
     @staticmethod
     def str_get_str(obj):
-        if hasattr(obj, 'get_str'):
+        if hasattr(obj, "get_str"):
             # sometimes a class gets passed in, which doesn't have an self instance
             try:
                 return obj.get_str()
-            except Exception as ex:
+            except Exception:
                 return str(obj)
         else:
             return str(obj)
@@ -924,6 +974,7 @@ class Helpers():
     @staticmethod
     def is_callee(func_name: str):
         import inspect
+
         for frame_info in inspect.stack():
             if frame_info.function == func_name:
                 return True
@@ -931,29 +982,30 @@ class Helpers():
 
     @staticmethod
     def deserialize_messages(json_filename: str) -> list[Message]:
-        with open(os.path.expanduser(json_filename), 'r') as f:
+        with open(os.path.expanduser(json_filename), "r") as f:
             # find the place where there's an append
             full_str = f.read()
-            pattern = r'''(?m)^ {2}\}\r?\n^\]\s*\r?\n^\s*\r?\n^\[\s*\r?\n^ {2}\{'''
-            replacement = '  },\n  {'
+            pattern = r"""(?m)^ {2}\}\r?\n^\]\s*\r?\n^\s*\r?\n^\[\s*\r?\n^ {2}\{"""
+            replacement = "  },\n  {"
             clean_content = re.sub(pattern, replacement, full_str)
             messages = json.loads(clean_content)
         return [Message.from_json(m) for m in messages]
 
     @staticmethod
     def get_google_sheet(url: str) -> PandasMeta:
-            import gspread
-            from gspread_dataframe import get_as_dataframe
-            gp = gspread.oauth()  # type: ignore
-            spreadsheet = gp.open_by_url(url)
-            ws = spreadsheet.get_worksheet(0)
-            df = get_as_dataframe(ws, drop_empty_rows=True, drop_empty_columns=True)
-            return PandasMeta(expr_str=url, pandas_df=df)
+        import gspread
+        from gspread_dataframe import get_as_dataframe
+
+        gp = gspread.oauth()  # type: ignore
+        spreadsheet = gp.open_by_url(url)
+        ws = spreadsheet.get_worksheet(0)
+        df = get_as_dataframe(ws, drop_empty_rows=True, drop_empty_columns=True)
+        return PandasMeta(expr_str=url, pandas_df=df)
 
     @staticmethod
     def parse_lists_from_string(list_str: str) -> list:
         list_str = list_str.strip()
-        pattern = r'\[[^\[\]]*\]'
+        pattern = r"\[[^\[\]]*\]"
         list_strings = re.findall(pattern, list_str)
 
         lists = [eval(lst_str) for lst_str in list_strings]
@@ -965,29 +1017,32 @@ class Helpers():
             list_string = list_string.strip()
 
             # Check if the string starts with '[' and ends with ']'
-            if not (list_string.startswith('[') and list_string.endswith(']')):
+            if not (list_string.startswith("[") and list_string.endswith("]")):
                 raise ValueError("Input string must start with '[' and end with ']'")
 
             result = eval(list_string)
 
             if not isinstance(result, list):
-                if default: return default
+                if default:
+                    return default
                 raise ValueError("Input string did not evaluate to a list")
 
             return result
 
         except SyntaxError as e:
-            if default: return default
+            if default:
+                return default
             raise SyntaxError(f"Invalid list syntax: {e}")
         except Exception as e:
-            if default: return default
+            if default:
+                return default
             raise ValueError(f"Error parsing list string: {e}")
 
     @staticmethod
     def is_async_iterator(obj):
         # Method 1: Check for __aiter__ and __anext__ methods
-        has_aiter = hasattr(obj, '__aiter__')
-        has_anext = hasattr(obj, '__anext__')
+        has_aiter = hasattr(obj, "__aiter__")
+        has_anext = hasattr(obj, "__anext__")
 
         # Method 2: Using isinstance with AsyncIterator
         is_async_iter = isinstance(obj, AsyncIterator)
@@ -1000,8 +1055,8 @@ class Helpers():
     @staticmethod
     def is_sync_iterator(obj):
         # Method 1: Check for __iter__ and __next__ methods
-        has_iter = hasattr(obj, '__iter__')
-        has_next = hasattr(obj, '__next__')
+        has_iter = hasattr(obj, "__iter__")
+        has_next = hasattr(obj, "__next__")
 
         # Method 2: Using isinstance with Iterator
         is_iter = isinstance(obj, Iterator)
@@ -1013,36 +1068,36 @@ class Helpers():
 
     @staticmethod
     def markdown_to_minimal_text(markdown_content):
-        soup = BeautifulSoup(markdown_content, 'html.parser')
+        soup = BeautifulSoup(markdown_content, "html.parser")
 
         text = md(str(soup), heading_style="ATX")
 
         # expressive markdown
-        if 'Clickable Elements' in text:
-            text = text[0:text.find('Clickable Elements:')]
+        if "Clickable Elements" in text:
+            text = text[0 : text.find("Clickable Elements:")]
 
-        text = re.sub(r'\n\s*\n', ' ', text)
-        text = re.sub(r'\n', ' ', text)
-        text = re.sub(r'#+\s*', '', text)  # Remove headers
-        text = re.sub(r'[*_~`]', '', text)  # Remove emphasis markers
-        text = re.sub(r'\[(.*?)\]\(.*?\)', r'\1', text)  # Convert links to just text
-        text = re.sub(r'!\[(.*?)\]\(.*?\)', r'\1', text)  # Convert images to just alt text
-        text = re.sub(r'^\s*[-*+]\s+', '', text, flags=re.MULTILINE)  # Remove list markers
-        text = re.sub(r'^\s*\d+\.\s+', '', text, flags=re.MULTILINE)  # Remove numbered list markers
-        text = re.sub(r'\|', ' ', text)  # Remove table separators
-        text = re.sub(r'^\s*>+\s*', '', text, flags=re.MULTILINE)  # Remove blockquotes
-        text = re.sub(r'([a-zA-Z])([A-Z])', r'\1 \2', text)  # Add space between camelCase
-        text = re.sub(r'([a-zA-Z0-9])([A-Z][a-z])', r'\1 \2', text)  # Better camelCase handling
-        text = re.sub(r'\s+', ' ', text)  # Collapse multiple spaces
-        text = re.sub(r'\s*([.,!?:;])', r'\1 ', text)  # Add space after punctuation
-        text = re.sub(r'\s+([.,!?:;])\s+', r'\1 ', text)  # Clean up extra spaces around punctuation
+        text = re.sub(r"\n\s*\n", " ", text)
+        text = re.sub(r"\n", " ", text)
+        text = re.sub(r"#+\s*", "", text)  # Remove headers
+        text = re.sub(r"[*_~`]", "", text)  # Remove emphasis markers
+        text = re.sub(r"\[(.*?)\]\(.*?\)", r"\1", text)  # Convert links to just text
+        text = re.sub(r"!\[(.*?)\]\(.*?\)", r"\1", text)  # Convert images to just alt text
+        text = re.sub(r"^\s*[-*+]\s+", "", text, flags=re.MULTILINE)  # Remove list markers
+        text = re.sub(r"^\s*\d+\.\s+", "", text, flags=re.MULTILINE)  # Remove numbered list markers
+        text = re.sub(r"\|", " ", text)  # Remove table separators
+        text = re.sub(r"^\s*>+\s*", "", text, flags=re.MULTILINE)  # Remove blockquotes
+        text = re.sub(r"([a-zA-Z])([A-Z])", r"\1 \2", text)  # Add space between camelCase
+        text = re.sub(r"([a-zA-Z0-9])([A-Z][a-z])", r"\1 \2", text)  # Better camelCase handling
+        text = re.sub(r"\s+", " ", text)  # Collapse multiple spaces
+        text = re.sub(r"\s*([.,!?:;])", r"\1 ", text)  # Add space after punctuation
+        text = re.sub(r"\s+([.,!?:;])\s+", r"\1 ", text)  # Clean up extra spaces around punctuation
         text = text.strip()
         return text
 
     @staticmethod
     def keep_last_browser_content(text: str, erase: bool = False) -> str:
         # Pattern to match <helpers_result> blocks
-        pattern = r'(<helpers_result>(.*?)</helpers_result>)'
+        pattern = r"(<helpers_result>(.*?)</helpers_result>)"
 
         # Find all matches
         matches = list(re.finditer(pattern, text, re.DOTALL))
@@ -1053,28 +1108,29 @@ class Helpers():
         # Collect replacements for all matches except the last one
         replacements = []
         for match in matches[:-1]:
-            full_match = match.group(1)  # Entire <helpers_result>...</helpers_result> block
-            content = match.group(2)     # Content inside the block
+            content = match.group(2)  # Content inside the block
 
             # Normalize whitespace for accurate line counting
-            content_lines = content.strip().split('\n')
+            content_lines = content.strip().split("\n")
 
             # Check if the block has already been processed
             # Process only if there is more than one line or if the content differs from expected
             if (
                 len(content_lines) > 1
-                or not content_lines[0].startswith('BrowserContent(')
-                and not content_lines[0].startswith('BrowserContent(processed=true,')
+                or not content_lines[0].startswith("BrowserContent(")
+                and not content_lines[0].startswith("BrowserContent(processed=true,")
             ):
                 # Extract the BrowserContent(...) line
-                browser_content_match = re.search(r'(BrowserContent\([^)]+\))', content)
+                browser_content_match = re.search(r"(BrowserContent\([^)]+\))", content)
                 if browser_content_match:
-                    browser_line = browser_content_match.group(1).replace('BrowserContent(', 'BrowserContent(processed=true, ')
+                    browser_line = browser_content_match.group(1).replace(
+                        "BrowserContent(", "BrowserContent(processed=true, "
+                    )
                 else:
-                    browser_line = ''  # If not found, default to empty
+                    browser_line = ""  # If not found, default to empty
 
                 if not erase:
-                    browser_line = browser_line + ' ' + Helpers.markdown_to_minimal_text(content)
+                    browser_line = browser_line + " " + Helpers.markdown_to_minimal_text(content)
 
                 # Prepare the replacement
                 replacement = f"<helpers_result>{browser_line}\n</helpers_result>"
@@ -1090,37 +1146,37 @@ class Helpers():
     @staticmethod
     def clean_tracking(url: str) -> str:
         patterns = [
-            r'utm_[^&]*&?',
-            r'fbclid=[^&]*&?',
-            r'gclid=[^&]*&?',
-            r'_ga=[^&]*&?',
+            r"utm_[^&]*&?",
+            r"fbclid=[^&]*&?",
+            r"gclid=[^&]*&?",
+            r"_ga=[^&]*&?",
         ]
 
         cleaned_url = url
         for pattern in patterns:
-            cleaned_url = re.sub(pattern, '', cleaned_url)
+            cleaned_url = re.sub(pattern, "", cleaned_url)
 
-        cleaned_url = re.sub(r'[?&]$', '', cleaned_url)
+        cleaned_url = re.sub(r"[?&]$", "", cleaned_url)
         return cleaned_url
 
     @staticmethod
     def clean_url_params(url: str, limit: int = 50) -> str:
         parsed_url = urlparse(url)
 
-        query_params = parsed_url.query.split('&')
+        query_params = parsed_url.query.split("&")
         cleaned_query_params = []
 
         for param in query_params:
             if len(param) <= limit:
                 cleaned_query_params.append(param)
 
-        cleaned_query = '&'.join(cleaned_query_params)
+        cleaned_query = "&".join(cleaned_query_params)
         cleaned_url = parsed_url._replace(query=cleaned_query).geturl()
         return cleaned_url
 
     @staticmethod
     def split_on_newline(text):
-        return re.split(r'(?<!\\)\n', text)
+        return re.split(r"(?<!\\)\n", text)
 
     @staticmethod
     def escape_newlines_in_strings(code):
@@ -1129,11 +1185,11 @@ class Helpers():
         n = len(code)
         in_string = False
         in_comment = False
-        string_quote = ''
+        string_quote = ""
         while i < n:
             c = code[i]
             if not in_string and not in_comment:
-                if c == '#':
+                if c == "#":
                     # Start of a comment
                     in_comment = True
                     result.append(c)
@@ -1141,7 +1197,7 @@ class Helpers():
                 elif c in ('"', "'"):
                     # Start of a string
                     # Check for triple quotes
-                    if i + 2 < n and code[i:i+3] == c * 3:
+                    if i + 2 < n and code[i : i + 3] == c * 3:
                         string_quote = c * 3
                         in_string = True
                         result.append(string_quote)
@@ -1156,31 +1212,31 @@ class Helpers():
                     result.append(c)
                     i += 1
             elif in_string:
-                if c == '\\':
+                if c == "\\":
                     # Escape character, include next character as is
-                    result.append(code[i:i+2])
+                    result.append(code[i : i + 2])
                     i += 2
-                elif code[i:i+len(string_quote)] == string_quote:
+                elif code[i : i + len(string_quote)] == string_quote:
                     # End of string
                     result.append(string_quote)
                     i += len(string_quote)
                     in_string = False
-                    string_quote = ''
+                    string_quote = ""
                 else:
-                    if c == '\n':
+                    if c == "\n":
                         # Escape newline
-                        result.append('\\n')
+                        result.append("\\n")
                         i += 1
                     else:
                         result.append(c)
                         i += 1
             elif in_comment:
-                if c == '\n':
+                if c == "\n":
                     # End of comment
                     in_comment = False
                 result.append(c)
                 i += 1
-        return ''.join(result)
+        return "".join(result)
 
     @staticmethod
     def apply_unified_diff(original_content, diff_content):
@@ -1189,7 +1245,7 @@ class Helpers():
             end_idx = line.find(end_marker, start_idx + len(start_marker))
             if start_idx == -1 or end_idx == -1:
                 return line  # fallback: return entire line
-            return line[start_idx:end_idx + len(end_marker)]
+            return line[start_idx : end_idx + len(end_marker)]
 
         def after_end(line, start_marker, end_marker):
             start_idx = line.find(start_marker)
@@ -1198,17 +1254,22 @@ class Helpers():
             end_idx = line.find(end_marker, start_idx + len(start_marker))
             if end_idx == -1:
                 return line
-            return line[end_idx + len(end_marker):]
+            return line[end_idx + len(end_marker) :]
 
         original_lines = original_content.splitlines()
         diff_lines = diff_content.splitlines()
         modified_lines = original_lines.copy()
 
         # If first line is in the “botched” format, fix it.
-        if diff_lines and diff_lines[0].startswith("@@") and not diff_lines[0].endswith("@@") and "@@" in diff_lines[0][2:]:
+        if (
+            diff_lines
+            and diff_lines[0].startswith("@@")
+            and not diff_lines[0].endswith("@@")
+            and "@@" in diff_lines[0][2:]
+        ):
             # The line might look like: "@@ -6,6 +6,7 @@ extra stuff"
-            new_start_line = in_between_including(diff_lines[0], '@@', '@@')
-            next_line = after_end(diff_lines[0], '@@', '@@').strip()
+            new_start_line = in_between_including(diff_lines[0], "@@", "@@")
+            next_line = after_end(diff_lines[0], "@@", "@@").strip()
 
             diff_lines[0] = new_start_line
             # Insert the leftover part as a new line if it’s non-empty
@@ -1235,13 +1296,12 @@ class Helpers():
                 if len(parts) >= 3 and parts[0] == "@@":
                     # old side is in parts[1], new side in parts[2]
                     old_region = parts[1]  # e.g. "-6,6"
-                    new_region = parts[2]  # e.g. "+6,7"
 
                     # Extract the start line from old_region
                     # old_region looks like "-6,6" => start=6 length=6
                     try:
-                        old_start_str = old_region.split(',')[0]  # => "-6"
-                        old_start = int(old_start_str[1:])        # => 6
+                        old_start_str = old_region.split(",")[0]  # => "-6"
+                        old_start = int(old_start_str[1:])  # => 6
                     except ValueError:
                         old_start = 1  # fallback
 
@@ -1254,8 +1314,7 @@ class Helpers():
                 # We have a removal. If it matches the current line, pop it.
                 # If your LLM sometimes omits or changes spaces, you may want a fuzzy match.
                 to_remove = line[1:]
-                if (0 <= current_line < len(modified_lines)
-                        and modified_lines[current_line] == to_remove):
+                if 0 <= current_line < len(modified_lines) and modified_lines[current_line] == to_remove:
                     modified_lines.pop(current_line)
                 else:
                     # If you suspect minor whitespace diffs, you could do:
@@ -1290,14 +1349,14 @@ class Helpers():
                 continue
 
             if not line.strip() and current_hunk:  # Empty line and we have content
-                if any(l.startswith('+') or l.startswith('-') for l in current_hunk):
+                if any(l.startswith("+") or l.startswith("-") for l in current_hunk):
                     hunks.append(current_hunk)
                 current_hunk = []
             else:
                 current_hunk.append(line)
 
         # Add the last hunk if it contains changes
-        if current_hunk and any(l.startswith('+') or l.startswith('-') for l in current_hunk):
+        if current_hunk and any(l.startswith("+") or l.startswith("-") for l in current_hunk):
             hunks.append(current_hunk)
 
         # Process each hunk
@@ -1307,7 +1366,7 @@ class Helpers():
             # Find the context before changes
             context_before = []
             for line in hunk:
-                if line.startswith('+') or line.startswith('-'):
+                if line.startswith("+") or line.startswith("-"):
                     break
                 context_before.append(line)
 
@@ -1326,7 +1385,7 @@ class Helpers():
                 continue  # Context not found
 
             # Apply the hunk at the found position
-            new_result = result[:start_idx + len(context_before)]  # Keep everything up to and including context
+            new_result = result[: start_idx + len(context_before)]  # Keep everything up to and including context
 
             # Process the hunk lines after context
             changes_start = len(context_before)
@@ -1335,10 +1394,10 @@ class Helpers():
             for i in range(changes_start, len(hunk)):
                 line = hunk[i]
 
-                if line.startswith('+'):
+                if line.startswith("+"):
                     # Add new line
                     new_result.append(line[1:])
-                elif line.startswith('-'):
+                elif line.startswith("-"):
                     # Remove the next line in result if it matches
                     if result_idx < len(result) and result[result_idx] == line[1:]:
                         result_idx += 1
@@ -1352,7 +1411,7 @@ class Helpers():
             new_result.extend(result[result_idx:])
             result = new_result
 
-        return '\n'.join(result) + '\n'
+        return "\n".join(result) + "\n"
 
     @staticmethod
     def write_markdown(markdown: MarkdownContent, dest: io.TextIOBase):
@@ -1362,7 +1421,9 @@ class Helpers():
             elif isinstance(content, ImageContent):
                 if len(content.sequence) > 0:
                     image_type = Helpers.classify_image(content.get_bytes())
-                    dest.write(f"![image](data:{image_type};base64,{base64.b64encode(content.sequence).decode('utf-8')})")
+                    dest.write(
+                        f"![image](data:{image_type};base64,{base64.b64encode(content.sequence).decode('utf-8')})"
+                    )
                 elif content.url:
                     dest.write(f"![image]({content.url})")
         dest.flush()
@@ -1370,20 +1431,20 @@ class Helpers():
 
     @staticmethod
     def is_markdown_simple(text):
-        if '```markdown' in text:
+        if "```markdown" in text:
             return True
 
         # Define regex patterns for common markdown elements
         patterns = [
-            r'^\s{0,3}#{1,6}\s',  # Headers
-            r'^\s{0,3}>\s',       # Blockquotes
-            r'^\s{0,3}[-*+]\s',   # Unordered lists
-            r'^\s{0,3}\d+\.\s',   # Ordered lists
-            r'\[.*?\]\(.*?\)',    # Links
-            r'!\[.*?\]\(.*?\)',   # Images
-            r'^\s{0,3}```',       # Code blocks
-            r'\$\$[\s\S]*?\$\$',  # LaTeX block equations
-            r'\$.*?\$'            # LaTeX inline equations
+            r"^\s{0,3}#{1,6}\s",  # Headers
+            r"^\s{0,3}>\s",  # Blockquotes
+            r"^\s{0,3}[-*+]\s",  # Unordered lists
+            r"^\s{0,3}\d+\.\s",  # Ordered lists
+            r"\[.*?\]\(.*?\)",  # Links
+            r"!\[.*?\]\(.*?\)",  # Images
+            r"^\s{0,3}```",  # Code blocks
+            r"\$\$[\s\S]*?\$\$",  # LaTeX block equations
+            r"\$.*?\$",  # LaTeX inline equations
         ]
         # Check if any pattern matches the text
         for pattern in patterns:
@@ -1398,11 +1459,11 @@ class Helpers():
         base_domain = f"{parsed_base.scheme}://{parsed_base.netloc}"
 
         # If href is already a full URL, return it
-        if href.startswith(('http://', 'https://')):
+        if href.startswith(("http://", "https://")):
             return href
 
         # If href starts with '/', join it with the base domain
-        if href.startswith('/'):
+        if href.startswith("/"):
             return urljoin(base_domain, href)
 
         # For relative URLs, join with the full base URL
@@ -1428,30 +1489,26 @@ class Helpers():
             # except subprocess.CalledProcessError as e:
             #     return f"Error: {e}"
 
-
-        pattern = r'\$\(((?:[^()]+|\((?:[^()]+|\([^()]*\))*\))*)\)'
+        pattern = r"\$\(((?:[^()]+|\((?:[^()]+|\([^()]*\))*\))*)\)"
         return re.sub(pattern, execute_command, input_string)
 
     @staticmethod
     def get_callsite(call_str: str, tools: list[Callable]) -> Optional[FunctionCall]:
-        def __get_callsite_helper(
-            call: str,
-            functions: List[Callable]
-        ) -> Optional[Tuple[Callable, Dict[str, Any]]]:
+        def __get_callsite_helper(call: str, functions: List[Callable]) -> Optional[Tuple[Callable, Dict[str, Any]]]:
             function_description: Dict[str, Any] = {}
 
-            if call.startswith('def '):
+            if call.startswith("def "):
                 call = call[4:]
 
-            function_name = Helpers.in_between(call, '', '(')
-            if ' ' in function_name or ',' in function_name:
+            function_name = Helpers.in_between(call, "", "(")
+            if " " in function_name or "," in function_name:
                 return None
 
-            function_arg_str = Helpers.in_between(call, '(', ')')
+            function_arg_str = Helpers.in_between(call, "(", ")")
             function_args = []
 
             is_str = False
-            token = ''
+            token = ""
             for i in range(0, len(function_arg_str)):
                 c = function_arg_str[i]
                 if c == '"' and not is_str:
@@ -1460,10 +1517,10 @@ class Helpers():
                 elif c == '"' and is_str:
                     is_str = False
                     token += c
-                elif not is_str and c == ',':
+                elif not is_str and c == ",":
                     function_args.append(token.strip())
-                    token = ''
-                elif not is_str and c == ' ':  # ignore spaces
+                    token = ""
+                elif not is_str and c == " ":  # ignore spaces
                     continue
                 else:
                     token += c
@@ -1476,10 +1533,7 @@ class Helpers():
 
             for f in functions:
                 if f.__name__.lower() in function_name.lower():
-                    function_description = Helpers.get_function_description(
-                        f,
-                        openai_format=True
-                    )
+                    function_description = Helpers.get_function_description(f, openai_format=True)
                     func = f
                     break
 
@@ -1488,9 +1542,9 @@ class Helpers():
 
             argument_count = 0
 
-            for _, parameter in function_description['parameters']['properties'].items():
+            for _, parameter in function_description["parameters"]["properties"].items():
                 if argument_count < len(function_args):
-                    parameter.update({'argument': function_args[argument_count]})
+                    parameter.update({"argument": function_args[argument_count]})
                 argument_count += 1
 
             return func, function_description
@@ -1498,15 +1552,15 @@ class Helpers():
         callsite = __get_callsite_helper(call_str, tools)
         if callsite:
             func, function_description = callsite
-            name = function_description['name']
+            name = function_description["name"]
             arguments = []
             types = []
-            for arg_name, metadata in function_description['parameters']['properties'].items():
+            for arg_name, metadata in function_description["parameters"]["properties"].items():
                 # todo if we don't have an argument here, we should ensure that
                 # the function has a default value for the parameter
-                if 'argument' in metadata:
-                    arguments.append({arg_name: metadata['argument']})
-                    types.append({arg_name: metadata['type']})
+                if "argument" in metadata:
+                    arguments.append({arg_name: metadata["argument"]})
+                    types.append({arg_name: metadata["type"]})
 
             return FunctionCall(
                 name=name,
@@ -1522,7 +1576,7 @@ class Helpers():
             return False
         if isinstance(node1, ast.AST):
             for k, v in vars(node1).items():
-                if k in ('lineno', 'col_offset', 'ctx'):
+                if k in ("lineno", "col_offset", "ctx"):
                     continue
                 if not Helpers.compare_ast(v, getattr(node2, k)):
                     return False
@@ -1549,7 +1603,7 @@ class Helpers():
     @staticmethod
     def extract_stacktrace_until(stacktrace: str, cls: type):
         filename = inspect.getfile(cls)
-        lines = stacktrace.split('\n')
+        lines = stacktrace.split("\n")
 
         # Find the last occurrence of the filename in the stacktrace
         file_lines = [i for i, line in enumerate(lines) if filename in line]
@@ -1557,7 +1611,7 @@ class Helpers():
             return stacktrace
 
         start_index = file_lines[-1] + 1  # Start from the line after the last occurrence
-        return '\n'.join(lines[start_index:])
+        return "\n".join(lines[start_index:])
 
     @staticmethod
     def remove_duplicates(lst, key_func=lambda x: x):
@@ -1567,19 +1621,20 @@ class Helpers():
             # check to see if any of the strings in the list are substrings of another list item, and if so, remove that
             sub_dups = [a for a in result if not any(key_func(a) in key_func(b) for b in result if a != b)]
             return sub_dups
-        except Exception as ex:
+        except Exception:
             return result
 
     @staticmethod
     def openai_image_tok_count(base64_encoded: str):
         def __calculate_image_tokens(width: int, height: int):
-                from math import ceil
+            from math import ceil
 
-                h = ceil(height / 512)
-                w = ceil(width / 512)
-                n = w * h
-                total = 85 + 170 * n
-                return total
+            h = ceil(height / 512)
+            w = ceil(width / 512)
+            n = w * h
+            total = 85 + 170 * n
+            return total
+
         # go from base64 encoded to bytes
         image = base64.b64decode(base64_encoded)
         # open the image
@@ -1597,9 +1652,11 @@ class Helpers():
     @staticmethod
     def anthropic_resize(image_bytes: bytes) -> bytes:
         image_type = Helpers.classify_image(image_bytes)
-        pil_extension = 'JPEG'
-        if image_type == 'image/png': pil_extension = 'PNG'
-        if image_type == 'image/webp': pil_extension = 'WEBP'
+        pil_extension = "JPEG"
+        if image_type == "image/png":
+            pil_extension = "PNG"
+        if image_type == "image/webp":
+            pil_extension = "WEBP"
 
         image = Image.open(io.BytesIO(image_bytes))
         original_width, original_height = image.size
@@ -1611,11 +1668,11 @@ class Helpers():
             (3, 4): (951, 1268),
             (2, 3): (896, 1344),
             (9, 16): (819, 1456),
-            (1, 2): (784, 1568)
+            (1, 2): (784, 1568),
         }
 
         # Find the closest aspect ratio and its max dimensions
-        closest_ratio = min(max_dimensions.keys(), key=lambda x: abs((x[0]/x[1]) - aspect_ratio))
+        closest_ratio = min(max_dimensions.keys(), key=lambda x: abs((x[0] / x[1]) - aspect_ratio))
         max_width, max_height = max_dimensions[closest_ratio]
 
         # Check if the image exceeds the maximum dimensions
@@ -1632,62 +1689,67 @@ class Helpers():
     async def download_bytes(url_or_file: str, throw: bool = True) -> bytes:
         url_result = urlparse(url_or_file)
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         }
 
-        if url_result.scheme in ('http', 'https'):
+        if url_result.scheme in ("http", "https"):
             async with httpx.AsyncClient() as client:
                 response = await client.get(url_or_file, headers=headers, follow_redirects=True, timeout=5)
                 if response.status_code != 200:
-                    if throw: raise ValueError(f'Helpers.download_bytes() Failed to download: {url_or_file}. Status code is: {response.status_code}')
-                    return b''
+                    if throw:
+                        raise ValueError(
+                            f"Helpers.download_bytes() Failed to download: {url_or_file}. Status code is: {response.status_code}"
+                        )
+                    return b""
                 return response.content
         else:
             try:
-                with open(url_or_file, 'rb') as file:
+                with open(url_or_file, "rb") as file:
                     return file.read()
             except FileNotFoundError:
-                if throw: raise ValueError(f'Helpers.download_bytes() The supplied argument url_or_file: {url_or_file} is not a correct filename or url.')
-                return b''
+                if throw:
+                    raise ValueError(
+                        f"Helpers.download_bytes() The supplied argument url_or_file: {url_or_file} is not a correct filename or url."
+                    )
+                return b""
 
     @staticmethod
     async def download(url_or_file: str) -> str:
         stream = await Helpers.download_bytes(url_or_file)
         if stream:
-            return stream.decode('utf-8')
-        return ''
-
+            return stream.decode("utf-8")
+        return ""
 
     @staticmethod
     async def get_image_fuzzy_url(logging, url: str, image_url: str, min_width: int, min_height: int) -> bytes:
         # Return early if there's no image URL
         if not image_url:
-            return b''
+            return b""
 
         # If the URL starts with "www", prepend https:// to it
-        if image_url.startswith('www'):
-            image_url = 'https://' + image_url
+        if image_url.startswith("www"):
+            image_url = "https://" + image_url
 
         try:
             # Handle protocol-relative URLs (e.g., //example.com/img.jpg)
-            if image_url.startswith('//'):
+            if image_url.startswith("//"):
                 parsed_base = urlparse(url)
-                scheme = parsed_base.scheme if parsed_base.scheme else 'https'
+                scheme = parsed_base.scheme if parsed_base.scheme else "https"
                 full_url = f"{scheme}:{image_url}"
                 result = await Helpers.download_bytes(full_url)
 
             # Handle full http(s) URLs
-            elif image_url.startswith('http://') or image_url.startswith('https://'):
+            elif image_url.startswith("http://") or image_url.startswith("https://"):
                 result = await Helpers.download_bytes(image_url)
 
             # Handle local file URLs and paths
-            elif image_url.startswith('file://'):
-                local_path = image_url[len('file://'):]
-                with open(local_path, 'rb') as f:
+            elif image_url.startswith("file://"):
+                local_path = image_url[len("file://") :]
+                with open(local_path, "rb") as f:
                     result = f.read()
             # Also if the file exists on disk using the given image_url directly
             elif os.path.exists(image_url):
-                with open(image_url, 'rb') as f:
+                with open(image_url, "rb") as f:
                     result = f.read()
 
             # Otherwise, assume it's a relative URL and build the full URL accordingly.
@@ -1706,11 +1768,11 @@ class Helpers():
         except Exception as e:
             logging.debug(f"Helpers.get_image_fuzzy_url({image_url}) exception caught: {e}")
 
-        return b''
+        return b""
 
     @staticmethod
     def remove_embedded_images(markdown_string):
-        pattern = r'(\[.*?\]):\s*<data:image/[^;]+;base64,\s*[^>]+>'
+        pattern = r"(\[.*?\]):\s*<data:image/[^;]+;base64,\s*[^>]+>"
 
         def replace_with_tag(match):
             return match.group(1)
@@ -1723,14 +1785,13 @@ class Helpers():
         logging, markdown_content: MarkdownContent, min_width: int, min_height: int
     ) -> list[SupportedMessageContent]:
         # Patterns for inline images and text
-        pattern = r'(.*?)!\[(.*?)\]\((.*?)\)|(.+?)$'
+        pattern = r"(.*?)!\[(.*?)\]\((.*?)\)|(.+?)$"
 
         # Pattern for embedded inline images
-        embedded_image_pattern = r'!\[([^\]]*?)\]\(data:image/([^;]+);base64,([^)]+)\)'
+        embedded_image_pattern = r"!\[([^\]]*?)\]\(data:image/([^;]+);base64,([^)]+)\)"
 
-        # New patterns for reference-style images
-        reference_pattern = r'!\[\]\[([^\]]+)\]'
-        definition_pattern = r'\[([^\]]+)\]:\s*<(data:image/([^;]+);base64,([^>]+))>'
+        # Pattern for reference-style image definitions
+        definition_pattern = r"\[([^\]]+)\]:\s*<(data:image/([^;]+);base64,([^>]+))>"
 
         content = markdown_content.get_str()
         content_list: List[SupportedMessageContent] = []
@@ -1749,22 +1810,18 @@ class Helpers():
             embedded_images[ref_id] = ImageContent(image_bytes, f"{ref_id}.{image_type}")
 
         # Remove the image definitions from the content
-        content = re.sub(definition_pattern, '', content)
+        content = re.sub(definition_pattern, "", content)
 
         # Replace inline embedded images with placeholders
         content = re.sub(
-            r'!\[([^\]]*)\]\(data:image/[^;]+;base64,[^)]+\)',
-            r'![\1](None)',  # \1 refers to the captured alt text
-            content
+            r"!\[([^\]]*)\]\(data:image/[^;]+;base64,[^)]+\)",
+            r"![\1](None)",  # \1 refers to the captured alt text
+            content,
         )
 
         # Replace reference-style embedded images with placeholders
         for ref_id in embedded_images.keys():
-            content = re.sub(
-                r'!\[\]\[' + re.escape(ref_id) + r'\]',
-                f'![{ref_id}](None)',
-                content
-            )
+            content = re.sub(r"!\[\]\[" + re.escape(ref_id) + r"\]", f"![{ref_id}](None)", content)
 
         last_end = 0
         idx = 0
@@ -1773,8 +1830,8 @@ class Helpers():
         for match in re.finditer(pattern, content, re.DOTALL):
             before, alt_text, image_id, after = match.groups()
 
-            if before and before != content[last_end:match.start()] and last_end != match.start():
-                content_list.append(TextContent(content[last_end:match.start()]))
+            if before and before != content[last_end : match.start()] and last_end != match.start():
+                content_list.append(TextContent(content[last_end : match.start()]))
                 idx += 1
 
             if before:
@@ -1790,7 +1847,7 @@ class Helpers():
                         Helpers.get_image_fuzzy_url(logging, markdown_content.url, image_id, min_width, min_height)
                     )
                     tasks.append((idx, task, image_id))
-                    content_list.append(TextContent(''))
+                    content_list.append(TextContent(""))
                 idx += 1
 
             if after:
@@ -1844,7 +1901,7 @@ class Helpers():
 
     @staticmethod
     def parse_relative_datetime(relative_expression: str, timezone: Optional[str] = None) -> dt.datetime:
-        if relative_expression.startswith('Q'):
+        if relative_expression.startswith("Q"):
             quarter = int(relative_expression[1:])
             return Helpers.last_day_of_quarter(dt.datetime.now().year, quarter)
 
@@ -1853,7 +1910,7 @@ class Helpers():
         if timezone:
             tz = ZoneInfo(timezone)
 
-        if 'now' in relative_expression:
+        if "now" in relative_expression:
             return dt.datetime.now(tz)
 
         parts = relative_expression.split()
@@ -1876,9 +1933,9 @@ class Helpers():
             return dateparser.parse(relative_expression)  # type: ignore
 
     @staticmethod
-    def load_resize_save(raw_data: bytes, output_format='PNG', max_size=5 * 1024 * 1024) -> bytes:
-        if output_format not in ['PNG', 'JPEG', 'WEBP']:
-            raise ValueError('Invalid output format')
+    def load_resize_save(raw_data: bytes, output_format="PNG", max_size=5 * 1024 * 1024) -> bytes:
+        if output_format not in ["PNG", "JPEG", "WEBP"]:
+            raise ValueError("Invalid output format")
 
         temp_output = io.BytesIO()
         result: bytes
@@ -1914,10 +1971,13 @@ class Helpers():
     @staticmethod
     def classify_image(raw_data):
         if raw_data:
-            if raw_data[:8] == b'\x89PNG\r\n\x1a\n': return 'image/png'
-            elif raw_data[:2] == b'\xff\xd8': return 'image/jpeg'
-            elif raw_data[:4] == b'RIFF' and raw_data[-4:] == b'WEBP': return 'image/webp'
-        return 'image/unknown'
+            if raw_data[:8] == b"\x89PNG\r\n\x1a\n":
+                return "image/png"
+            elif raw_data[:2] == b"\xff\xd8":
+                return "image/jpeg"
+            elif raw_data[:4] == b"RIFF" and raw_data[-4:] == b"WEBP":
+                return "image/webp"
+        return "image/unknown"
 
     @staticmethod
     def log_exception(logger, e, message=None):
@@ -1925,10 +1985,6 @@ class Helpers():
 
         while exc_traceback.tb_next:
             exc_traceback = exc_traceback.tb_next
-        frame = exc_traceback.tb_frame
-        lineno = exc_traceback.tb_lineno
-        filename = frame.f_code.co_filename
-
         log_message = traceback.format_exception(type(e), e, e.__traceback__)
         if message:
             log_message += f": {message}"
@@ -1937,10 +1993,10 @@ class Helpers():
 
     @staticmethod
     def glob_exclusions(pattern):
-        if not pattern.startswith('!'):
+        if not pattern.startswith("!"):
             return []
 
-        pattern = pattern.replace('!', '')
+        pattern = pattern.replace("!", "")
         # Find files matching exclusion patterns
         excluded_files = set()
         excluded_files.update(glob.glob(pattern, recursive=True))
@@ -1952,18 +2008,18 @@ class Helpers():
 
     @staticmethod
     def is_glob_recursive(s):
-        return '**' in s
+        return "**" in s
 
     @staticmethod
     def glob_brace(pattern):
-        parts = pattern.split('{')
+        parts = pattern.split("{")
         if len(parts) == 1:
             # No brace found, use glob directly
             return glob.glob(pattern)
 
         pre = parts[0]
-        post = parts[1].split('}', 1)[1]
-        options = parts[1].split('}', 1)[0].split(',')
+        post = parts[1].split("}", 1)[1]
+        options = parts[1].split("}", 1)[0].split(",")
 
         # Create individual patterns
         patterns = [pre + option + post for option in options]
@@ -1984,12 +2040,13 @@ class Helpers():
             else:
                 instance = cls()
                 return getattr(instance, method_name)(*args, **kwargs)
-        except Exception as e:
+        except Exception:
             pass
 
     @staticmethod
     def find_wezterm():
         import shutil
+
         # Try the standard way first
         wezterm_path = shutil.which("wezterm")
         if wezterm_path:
@@ -2011,6 +2068,7 @@ class Helpers():
     @staticmethod
     def find_kitty():
         import shutil
+
         kitty_path = shutil.which("kitty")
         if kitty_path:
             return kitty_path
@@ -2031,7 +2089,7 @@ class Helpers():
     def is_running(process_name):
         try:
             # Use 'ps' to list processes and grep for process_name
-            output = subprocess.check_output(['ps', 'aux'], text=True)
+            output = subprocess.check_output(["ps", "aux"], text=True)
             return process_name.lower() in output.lower()
         except Exception:
             return False
@@ -2039,7 +2097,7 @@ class Helpers():
     @staticmethod
     def get_parent_pid(pid):
         try:
-            output = subprocess.check_output(['ps', '-p', str(pid), '-o', 'ppid='], text=True)
+            output = subprocess.check_output(["ps", "-p", str(pid), "-o", "ppid="], text=True)
             return int(output.strip())
         except Exception:
             return None
@@ -2047,7 +2105,7 @@ class Helpers():
     @staticmethod
     def get_process_name(pid):
         try:
-            output = subprocess.check_output(['ps', '-p', str(pid), '-o', 'comm='], text=True)
+            output = subprocess.check_output(["ps", "-p", str(pid), "-o", "comm="], text=True)
             return output.strip()
         except Exception:
             return None
@@ -2069,11 +2127,11 @@ class Helpers():
     @staticmethod
     def is_pdf(byte_stream):
         # PDF files start with "%PDF-" (hex: 25 50 44 46 2D)
-        pdf_signature = b'%PDF-'
+        pdf_signature = b"%PDF-"
         # Read the first 5 bytes to check the signature
         first_bytes = byte_stream.read(5)
         # Reset the stream position to the beginning if possible
-        if hasattr(byte_stream, 'seek'):
+        if hasattr(byte_stream, "seek"):
             byte_stream.seek(0)
         # Return True if the signature matches
         return first_bytes == pdf_signature
@@ -2086,7 +2144,7 @@ class Helpers():
 
             buffer = io.BytesIO()
             with Image.open(io.BytesIO(byte_stream)) as im:
-                im.save(buffer, format='PNG')
+                im.save(buffer, format="PNG")
                 buffer.seek(0)
                 return buffer.getvalue()
         except Exception:
@@ -2099,7 +2157,7 @@ class Helpers():
                 byte_stream = byte_stream.getvalue()
 
             with Image.open(io.BytesIO(byte_stream)) as im:
-                return im.format == 'WEBP'
+                return im.format == "WEBP"
         except Exception:
             return False
 
@@ -2109,37 +2167,37 @@ class Helpers():
             if isinstance(byte_stream, io.BytesIO):
                 byte_stream = byte_stream.getvalue()
 
-            with Image.open(io.BytesIO(byte_stream)) as im:
+            with Image.open(io.BytesIO(byte_stream)):
                 return True
         except Exception:
             return False
 
     @staticmethod
     def is_markdown(byte_stream: Union[bytes, str, io.BytesIO]) -> bool:
-        content = ''
+        content = ""
         if isinstance(byte_stream, io.BytesIO):
             byte_stream = byte_stream.getvalue()
 
         # Convert the byte stream to a string
         if isinstance(byte_stream, bytes):
-            content = byte_stream.decode('utf-8', errors='ignore')
+            content = byte_stream.decode("utf-8", errors="ignore")
         else:
             content = byte_stream
 
         # Define regex patterns for common Markdown elements
         patterns = {
-            'headers': r'^#{1,6}\s',
-            'lists': r'^\s*[-*+]\s',
-            'numbered_lists': r'^\s*\d+\.\s',
-            'code_blocks': r'```[\s\S]*?```',
-            'links': r'\[([^\]]+)\]\(([^\)]+)\)',
-            'images': r'!\[([^\]]+)\]\(([^\)]+)\)',
-            'emphasis': r'\*\*[\s\S]*?\*\*|\*[\s\S]*?\*|__[\s\S]*?__|_[\s\S]*?_',
-            'blockquotes': r'^>\s',
-            'horizontal_rules': r'^(-{3,}|\*{3,}|_{3,})$',
-            'tables': r'\|[^|\r\n]*\|',
-            'latex_blocks': r'\$\$[\s\S]*?\$\$',  # LaTeX block equations
-            'latex_inline': r'\$[^\$\n]+?\$'      # LaTeX inline equations
+            "headers": r"^#{1,6}\s",
+            "lists": r"^\s*[-*+]\s",
+            "numbered_lists": r"^\s*\d+\.\s",
+            "code_blocks": r"```[\s\S]*?```",
+            "links": r"\[([^\]]+)\]\(([^\)]+)\)",
+            "images": r"!\[([^\]]+)\]\(([^\)]+)\)",
+            "emphasis": r"\*\*[\s\S]*?\*\*|\*[\s\S]*?\*|__[\s\S]*?__|_[\s\S]*?_",
+            "blockquotes": r"^>\s",
+            "horizontal_rules": r"^(-{3,}|\*{3,}|_{3,})$",
+            "tables": r"\|[^|\r\n]*\|",
+            "latex_blocks": r"\$\$[\s\S]*?\$\$",  # LaTeX block equations
+            "latex_inline": r"\$[^\$\n]+?\$",  # LaTeX inline equations
         }
 
         # Count the number of matches for each pattern
@@ -2147,9 +2205,6 @@ class Helpers():
 
         # Calculate the total number of matches
         total_matches = sum(matches.values())
-
-        # Calculate the number of lines in the content
-        num_lines = len(content.splitlines())
 
         # Check if there are multiple types of Markdown elements
         diverse_elements = sum(1 for count in matches.values() if count > 0)
@@ -2161,8 +2216,7 @@ class Helpers():
         # max_ratio = 0.8  # Maximum ratio of matches to lines
 
         # Make the decision
-        if (total_matches >= min_matches and
-            diverse_elements >= min_types):
+        if total_matches >= min_matches and diverse_elements >= min_types:
             return True
         return False
 
@@ -2172,7 +2226,7 @@ class Helpers():
             # Attempt to decompress to see if it's zlib compressed
             decompressed_data = zlib.decompress(byte_stream)
             return True, decompressed_data
-        except zlib.error as e:
+        except zlib.error:
             # If decompression fails, it's likely not zlib compressed or the data is corrupted/incomplete
             return False, byte_stream
 
@@ -2202,22 +2256,23 @@ class Helpers():
     @staticmethod
     def encode_image(image_path):
         with open(image_path, "rb") as image_file:
-            return base64.b64encode(image_file.read()).decode('utf-8')
+            return base64.b64encode(image_file.read()).decode("utf-8")
 
     @staticmethod
     def read_netscape_cookies(cookies_file_content: str) -> List[Dict[str, Any]]:
         cookies = []
         for line in cookies_file_content.splitlines():
-            if not line.startswith('#') and line.strip():  # Ignore comments and empty lines
+            if not line.startswith("#") and line.strip():  # Ignore comments and empty lines
                 try:
-                    domain, _, path, secure, expires_value, name, value = line.strip().split('\t')
+                    domain, _, path, secure, expires_value, name, value = line.strip().split("\t")
 
                     if not expires_value.isnumeric():
-                        if expires_value == 'Session':
+                        if expires_value == "Session":
                             expires_value = 1999999999
                         else:
                             import time
-                            expiration_datetime = dt.datetime.strptime(expires_value, '%Y-%m-%dT%H:%M:%S.%fZ')
+
+                            expiration_datetime = dt.datetime.strptime(expires_value, "%Y-%m-%dT%H:%M:%S.%fZ")
                             expires_value = int(time.mktime(expiration_datetime.timetuple()))
 
                     if int(expires_value) != -1 and int(expires_value) < 0:
@@ -2227,33 +2282,34 @@ class Helpers():
                     if dt_object.date() < dt.datetime.now().date():
                         continue
 
-                    cookies.append({
-                        "name": name,
-                        "value": value,
-                        "domain": domain,
-                        "path": path,
-                        "expires": int(expires_value),
-                        "httpOnly": False,
-                        "secure": secure == "TRUE"
-                    })
-                except Exception as ex:
+                    cookies.append(
+                        {
+                            "name": name,
+                            "value": value,
+                            "domain": domain,
+                            "path": path,
+                            "expires": int(expires_value),
+                            "httpOnly": False,
+                            "secure": secure == "TRUE",
+                        }
+                    )
+                except Exception:
                     pass
         return cookies
-
 
     @staticmethod
     def get_callables(logging: Logger, input_str: str) -> Optional[Union[List[Callable], Callable]]:
         parts = input_str.split(".")
 
-        if input_str.startswith('search'):
-            logging.debug('hello')
+        if input_str.startswith("search"):
+            logging.debug("hello")
 
         if len(parts) < 2:
             logging.error(f"Invalid input string: {input_str}")
             return None
 
         parts_counter = len(parts) - 1
-        module_name = ''
+        module_name = ""
         while parts_counter > 0:
             module_name = ".".join(parts[:parts_counter])
             try:
@@ -2293,10 +2349,9 @@ class Helpers():
     @staticmethod
     def __get_class_callables(class_obj) -> List[Callable]:
         return [
-            member for name, member in inspect.getmembers(class_obj)
-            if (inspect.isfunction(member) or inspect.ismethod(member))
-            and member.__doc__
-            and not name.startswith('_')
+            member
+            for name, member in inspect.getmembers(class_obj)
+            if (inspect.isfunction(member) or inspect.ismethod(member)) and member.__doc__ and not name.startswith("_")
         ]
 
     @staticmethod
@@ -2371,15 +2426,15 @@ class Helpers():
 
     @staticmethod
     def extract_token(s, ident):
-        if s.startswith(ident) and ' ' in s:
-            return s[0:s.index(' ')]
+        if s.startswith(ident) and " " in s:
+            return s[0 : s.index(" ")]
 
         if ident in s:
             parts = s.split(ident)
-            start = parts[0][parts[0].rfind(' ') + 1:] if ' ' in parts[0] else parts[0]
-            end = parts[1][:parts[1].find(' ')] if ' ' in parts[1] else parts[1]
+            start = parts[0][parts[0].rfind(" ") + 1 :] if " " in parts[0] else parts[0]
+            end = parts[1][: parts[1].find(" ")] if " " in parts[1] else parts[1]
             return start + ident + end
-        return ''
+        return ""
 
     @staticmethod
     def after_end(s: str, start: str, end: str) -> str:
@@ -2394,16 +2449,16 @@ class Helpers():
             return s
 
         # Extract the content after the end token
-        result = s[end_pos + len(end):]
+        result = s[end_pos + len(end) :]
         return result
 
     @staticmethod
     def in_between(s, start, end):
-        if end == '\n' and '\n' not in s:
-            return s[s.find(start) + len(start):]
+        if end == "\n" and "\n" not in s:
+            return s[s.find(start) + len(start) :]
 
-        after_start = s[s.find(start) + len(start):]
-        part = after_start[:after_start.find(end)]
+        after_start = s[s.find(start) + len(start) :]
+        part = after_start[: after_start.find(end)]
         return part
 
     @staticmethod
@@ -2418,15 +2473,15 @@ class Helpers():
         if end_index == -1:
             return after_start  # Return everything after start if end is not found
 
-        return s[start_index:start_index + end_index + len(end)]
+        return s[start_index : start_index + end_index + len(end)]
 
     @staticmethod
     def outside_of(s, start, end):
-        if end == '\n' and '\n' not in s:
-            return s[:s.find(start)]
+        if end == "\n" and "\n" not in s:
+            return s[: s.find(start)]
 
-        before_start = s[:s.find(start)]
-        after_end = s[s.find(end) + len(end):]
+        before_start = s[: s.find(start)]
+        after_end = s[s.find(end) + len(end) :]
         return before_start + after_end
 
     @staticmethod
@@ -2434,12 +2489,12 @@ class Helpers():
         # get the text from s between start and any of the end_strs strings.
         possibilities = []
         for end in end_strs:
-            if end == '\n' and '\n' not in s:
-                result = s[s.find(start) + len(start):]
+            if end == "\n" and "\n" not in s:
+                result = s[s.find(start) + len(start) :]
                 possibilities.append(result)
             elif end in s:
-                after_start = s[s.find(start) + len(start):]
-                part = after_start[:after_start.find(end)]
+                after_start = s[s.find(start) + len(start) :]
+                part = after_start[: after_start.find(end)]
                 if part:
                     possibilities.append(part)
 
@@ -2449,7 +2504,7 @@ class Helpers():
     @staticmethod
     def extract_blocks(markdown_text: str, block_type: str):
         # Pattern to match code blocks with or without specified language
-        pattern = fr'```{block_type}(\w+\n)?(.*?)```'
+        pattern = rf"```{block_type}(\w+\n)?(.*?)```"
 
         # Using re.DOTALL to make the '.' match also newlines
         matches = re.findall(pattern, markdown_text, re.DOTALL)
@@ -2461,7 +2516,7 @@ class Helpers():
     @staticmethod
     def extract_code_blocks(markdown_text) -> list:
         # Pattern to match code blocks with or without specified language
-        pattern = r'```(\w+\n)?(.*?)```'
+        pattern = r"```(\w+\n)?(.*?)```"
 
         # Using re.DOTALL to make the '.' match also newlines
         matches = re.findall(pattern, markdown_text, re.DOTALL)
@@ -2471,12 +2526,12 @@ class Helpers():
         return code_blocks
 
     @staticmethod
-    def extract_context(s, start, end, stop_tokens=['\n', '.', '?', '!']):
+    def extract_context(s, start, end, stop_tokens=["\n", ".", "?", "!"]):
         def capture(s, stop_tokens, backwards=False):
             if backwards:
                 for i in range(len(s) - 1, -1, -1):
                     if s[i] in stop_tokens:
-                        return s[i + 1:]
+                        return s[i + 1 :]
                 return s
             else:
                 for i in range(0, len(s)):
@@ -2484,8 +2539,8 @@ class Helpers():
                         return s[:i]
                 return s
 
-        if end == '\n' and '\n' not in s:
-            s += '\n'
+        if end == "\n" and "\n" not in s:
+            s += "\n"
 
         left_of_start = s.split(start)[0]
         right_of_end = s.split(end)[-1]
@@ -2493,22 +2548,22 @@ class Helpers():
 
     @staticmethod
     def strip_between(s: str, start: str, end: str):
-        first = s[:s.find(start)]
-        rest = s[s.find(start) + len(start):]
-        return first + rest[rest.find(end) + len(end):]
+        first = s[: s.find(start)]
+        rest = s[s.find(start) + len(start) :]
+        return first + rest[rest.find(end) + len(end) :]
 
     @staticmethod
     def split_between(s: str, start: str, end: str):
-        first = s[:s.find(start)]
-        rest = s[s.find(start) + len(start):]
-        return (first, rest[rest.find(end) + len(end):])
+        first = s[: s.find(start)]
+        rest = s[s.find(start) + len(start) :]
+        return (first, rest[rest.find(end) + len(end) :])
 
     @staticmethod
     def first(predicate, iterable, default=None):
         try:
             result = next(x for x in iterable if predicate(x))
             return result
-        except StopIteration as ex:
+        except StopIteration:
             return default
 
     @staticmethod
@@ -2546,13 +2601,13 @@ class Helpers():
     def find_string_between_tokens(text, start_token, end_token):
         start_index = text.rfind(start_token)
         if start_index == -1:
-            return ''
+            return ""
 
         end_index = text.rfind(end_token, start_index)
         if end_index == -1:
-            return ''
+            return ""
 
-        result = text[start_index + len(start_token):end_index]
+        result = text[start_index + len(start_token) : end_index]
         return result.strip()
 
     @staticmethod
@@ -2578,6 +2633,7 @@ class Helpers():
                 return False, obj
             except StopAsyncIteration:
                 return True, None
+
         while True:
             done, obj = loop.run_until_complete(get_next())
             if done:
@@ -2590,8 +2646,8 @@ class Helpers():
         sentences: List[str] = []
 
         for line in lines:
-            parts = line.split('.')
-            parts_with_period = [bel + '.' for bel in parts if bel]
+            parts = line.split(".")
+            parts_with_period = [bel + "." for bel in parts if bel]
             sentences.extend(parts_with_period)
 
         combined: List[str] = []
@@ -2603,7 +2659,7 @@ class Helpers():
 
             prev = combined[-1]
             if len(prev) + len(sentence) < max_chunk_length:
-                combined[-1] = f'{prev.strip()} {sentence.strip()}'
+                combined[-1] = f"{prev.strip()} {sentence.strip()}"
             else:
                 combined.append(sentence)
         return combined
@@ -2613,12 +2669,12 @@ class Helpers():
         words = text.split()
         result = []
         for i in range(0, len(words), max_chunk_length):
-            result.append(' '.join(words[i:i + max_chunk_length]))
+            result.append(" ".join(words[i : i + max_chunk_length]))
         return result
 
     @staticmethod
     def find_closest_sections(query: str, sections: list[str]):
-        raise NotImplementedError('This is not implemented yet')
+        raise NotImplementedError("This is not implemented yet")
         # from sentence_transformers import SentenceTransformer, util
         # from torch import Tensor
 
@@ -2642,7 +2698,7 @@ class Helpers():
             results = Helpers.find_closest_sections(query, sections)
         else:
             return []
-        return [a['text'] for a in results]
+        return [a["text"] for a in results]
 
     @staticmethod
     def prompt_data_iterable(
@@ -2656,9 +2712,9 @@ class Helpers():
         sections = Helpers.split_text_into_chunks(data, max_chunk_length=max_tokens - len(prompt_words))
         for section in sections:
             if prompt_at_end:
-                yield f'{section} {prompt}'
+                yield f"{section} {prompt}"
             else:
-                yield f'{prompt} {section}'
+                yield f"{prompt} {section}"
 
     @staticmethod
     def calculate_prompt_cost(content: str, max_chunk_length=4000):
@@ -2671,11 +2727,11 @@ class Helpers():
         num_chunks = round(len(words) / max_chunk_length)
         est_time = est_tokens / 4000 * 1.5  # around 1.5 mins per 4000 tokens
         return {
-            'est_tokens': est_tokens,
-            'cost_per_token': cost_per_token,
-            'est_cost': est_cost,
-            'num_chunks': num_chunks,
-            'est_time': est_time,
+            "est_tokens": est_tokens,
+            "cost_per_token": cost_per_token,
+            "est_cost": est_cost,
+            "num_chunks": num_chunks,
+            "est_time": est_time,
         }
 
     @staticmethod
@@ -2683,7 +2739,7 @@ class Helpers():
         words = []
         for m in messages:
             words.append([w.split() for w in m.values()])
-        return ' '.join(Helpers.flatten(words))
+        return " ".join(Helpers.flatten(words))
 
     @staticmethod
     async def generator_for_new_tokens(program, *args, **kwargs):
@@ -2692,9 +2748,9 @@ class Helpers():
         while not future._execute_complete.is_set():
             await asyncio.sleep(0.2)
             snapshot = future.text
-            yield snapshot[len(starting_text):]
+            yield snapshot[len(starting_text) :]
             starting_text = snapshot
-        yield future.text[len(starting_text):]
+        yield future.text[len(starting_text) :]
 
     @staticmethod
     def run_and_stream(program, *args, **kwargs):
@@ -2713,13 +2769,15 @@ class Helpers():
 
     @staticmethod
     def strip_roles(text: str) -> str:
-        text = text.replace('{{llm.default_system_prompt}}', '')
-        result = text.replace('{{#system~}}', '') \
-            .replace('{{~/system}}', '') \
-            .replace('{{#user~}}', '') \
-            .replace('{{~/user}}', '') \
-            .replace('{{#assistant~}}', '') \
-            .replace('{{~/assistant}}', '')
+        text = text.replace("{{llm.default_system_prompt}}", "")
+        result = (
+            text.replace("{{#system~}}", "")
+            .replace("{{~/system}}", "")
+            .replace("{{#user~}}", "")
+            .replace("{{~/user}}", "")
+            .replace("{{#assistant~}}", "")
+            .replace("{{~/assistant}}", "")
+        )
         return result
 
     @staticmethod
@@ -2735,13 +2793,13 @@ class Helpers():
             # Second attempt: use qualname for regular functions
             if inspect.isfunction(func):
                 # Check if __qualname__ exists and has proper format
-                if hasattr(func, '__qualname__') and '.' in func.__qualname__:
+                if hasattr(func, "__qualname__") and "." in func.__qualname__:
                     try:
                         # Get the module
                         module = inspect.getmodule(func)
                         if module:
                             # Extract class name from qualname
-                            class_name = func.__qualname__.split('.<locals>', 1)[0].rsplit('.', 1)[0]
+                            class_name = func.__qualname__.split(".<locals>", 1)[0].rsplit(".", 1)[0]
                             cls = getattr(module, class_name, None)
                             if isinstance(cls, type):
                                 return cls
@@ -2749,20 +2807,23 @@ class Helpers():
                         pass
 
             # Third attempt: check for __objclass__ attribute (descriptors)
-            cls = getattr(func, '__objclass__', None)
+            cls = getattr(func, "__objclass__", None)
             if isinstance(cls, type):
                 return cls
 
             # Fourth attempt: check globals dictionary directly
-            if hasattr(func, '__globals__') and func.__globals__:
+            if hasattr(func, "__globals__") and func.__globals__:
                 # Try to find a class in globals that contains this function
                 for name, obj in func.__globals__.items():
                     if isinstance(obj, type):
                         # Check if function exists in the class's dict
                         if func.__name__ in obj.__dict__ and (
-                                obj.__dict__[func.__name__] is func or
-                                (hasattr(obj.__dict__[func.__name__], '__func__') and
-                                obj.__dict__[func.__name__].__func__ is func)):
+                            obj.__dict__[func.__name__] is func
+                            or (
+                                hasattr(obj.__dict__[func.__name__], "__func__")
+                                and obj.__dict__[func.__name__].__func__ is func
+                            )
+                        ):
                             return obj
         except Exception:
             # Catch any other exceptions during introspection
@@ -2779,18 +2840,15 @@ class Helpers():
                     return cls
             func = func.__func__  # fallback to __qualname__ parsing
         if inspect.isfunction(func):
-            cls = getattr(
-                inspect.getmodule(func),
-                func.__qualname__.split('.<locals>', 1)[0].rsplit('.', 1)[0]
-            )
+            cls = getattr(inspect.getmodule(func), func.__qualname__.split(".<locals>", 1)[0].rsplit(".", 1)[0])
             if isinstance(cls, type):
                 return cls
-        return getattr(func, '__objclass__', None)  # handle special descriptor objects
+        return getattr(func, "__objclass__", None)  # handle special descriptor objects
 
     @staticmethod
     def is_static_method(func) -> Tuple[bool, Optional[type]]:
         try:
-            class_name = func.__qualname__.split('.<locals>', 1)[0].rsplit('.', 1)[0]
+            class_name = func.__qualname__.split(".<locals>", 1)[0].rsplit(".", 1)[0]
             cls = func.__globals__.get(class_name)
 
             if cls is None or not isinstance(cls, type):
@@ -2810,29 +2868,29 @@ class Helpers():
     def get_function_description(func, openai_format: bool) -> Dict[str, Any]:
         def parse_type(t):
             if t is str:
-                return 'string'
+                return "string"
             elif t is int:
-                return 'integer'
+                return "integer"
             elif t is IntEnum:
-                return 'integer'
+                return "integer"
             elif t is Enum:
-                return 'string'
+                return "string"
             elif t is float:
-                return 'number'
+                return "number"
             else:
-                return 'object'
+                return "object"
 
         import inspect
 
-        description = ''
+        description = ""
         if func.__doc__ and parse(func.__doc__).short_description:
             description = parse(func.__doc__).short_description
         if func.__doc__ and parse(func.__doc__).long_description:
-            description += ' ' + str(parse(func.__doc__).long_description).replace('\n', ' ')  # type: ignore
+            description += " " + str(parse(func.__doc__).long_description).replace("\n", " ")  # type: ignore
 
         func_name = func.__name__
         func_class = Helpers.__get_class_of_func(func)
-        invoked_by = f'{func_class.__name__}.{func_name}' if func_class else func_name
+        invoked_by = f"{func_class.__name__}.{func_name}" if func_class else func_name
 
         params = {}
 
@@ -2840,187 +2898,178 @@ class Helpers():
             param = inspect.signature(func).parameters[p]
             parameter = {
                 param.name: {
-                    'type': parse_type(param.annotation) if param.annotation is not inspect._empty else 'object',
-                    'description': '',
+                    "type": parse_type(param.annotation) if param.annotation is not inspect._empty else "object",
+                    "description": "",
                 }
             }
 
             if param.annotation and isinstance(param.annotation, type) and issubclass(param.annotation, Enum):
                 values = [v.value for v in param.annotation.__members__.values()]
-                parameter[param.name]['enum'] = values  # type: ignore
+                parameter[param.name]["enum"] = values  # type: ignore
 
             params.update(parameter)
 
             # if it's got doc comments, use those instead
             for p in parse(func.__doc__).params:  # type: ignore
-                params.update({
-                    p.arg_name: {  # type: ignore
-                        'type': parse_type(p.type_name) if p.type_name is not None else 'string',  # type: ignore
-                        'description': p.description,  # type: ignore
-                    }  # type: ignore
-                })
+                params.update(
+                    {
+                        p.arg_name: {  # type: ignore
+                            "type": parse_type(p.type_name) if p.type_name is not None else "string",  # type: ignore
+                            "description": p.description,  # type: ignore
+                        }  # type: ignore
+                    }
+                )
 
         def required_params(func):
             parameters = inspect.signature(func).parameters
             return [
-                name for name, param in parameters.items()
+                name
+                for name, param in parameters.items()
                 if param.default == inspect.Parameter.empty and param.kind != param.VAR_KEYWORD
             ]
 
         function = {
-            'name': invoked_by,
-            'description': description,
-            'parameters': {
-                'type': 'object',
-                'properties': params
-            },
-            'required': required_params(func),
+            "name": invoked_by,
+            "description": description,
+            "parameters": {"type": "object", "properties": params},
+            "required": required_params(func),
         }
 
         if openai_format:
             return function
         else:
             return {
-                'invoked_by': invoked_by,
-                'description': description,
-                'parameters': list(params.keys()),
-                'types': [p['type'] for p in params.values()],
-                'return_type': typing.get_type_hints(func).get('return')
+                "invoked_by": invoked_by,
+                "description": description,
+                "parameters": list(params.keys()),
+                "types": [p["type"] for p in params.values()],
+                "return_type": typing.get_type_hints(func).get("return"),
             }
 
     @staticmethod
     def get_function_description_simple(function: Callable) -> str:
         description = Helpers.get_function_description(function, openai_format=False)
-        return (f'{description["invoked_by"]}({", ".join(description["parameters"])})  # {description["description"] or "No docstring"}')
+        return f"{description['invoked_by']}({', '.join(description['parameters'])})  # {description['description'] or 'No docstring'}"
 
     @staticmethod
     def get_function_description_flat_old(function: Callable) -> str:
         description = Helpers.get_function_description(function, openai_format=False)
-        parameter_type_list = [f"{param}: {typ}" for param, typ in zip(description['parameters'], description['types'])]
-        return_type = description['return_type'].__name__ if description['return_type'] else 'Any'
+        parameter_type_list = [f"{param}: {typ}" for param, typ in zip(description["parameters"], description["types"])]
+        return_type = description["return_type"].__name__ if description["return_type"] else "Any"
 
         is_static, cls = Helpers.is_static_method(function)
         if not is_static and cls:
-            result = (f'def {description["invoked_by"]}({", ".join(parameter_type_list)}) -> {return_type}  # Instantiate with {cls.__name__}(). {description["description"] or "No docstring"}')  # noqa: E501
+            result = f"def {description['invoked_by']}({', '.join(parameter_type_list)}) -> {return_type}  # Instantiate with {cls.__name__}(). {description['description'] or 'No docstring'}"  # noqa: E501
         else:
-            result = (f'def {description["invoked_by"]}({", ".join(parameter_type_list)}) -> {return_type}  # @staticmethod {description["description"] or "No docstring"}')  # noqa: E501
+            result = f"def {description['invoked_by']}({', '.join(parameter_type_list)}) -> {return_type}  # @staticmethod {description['description'] or 'No docstring'}"  # noqa: E501
         return result
 
     @staticmethod
-    def load_resources_prompt(prompt_name: str, module: str = 'llmvm.server.prompts.python') -> Dict[str, Any]:
+    def load_resources_prompt(prompt_name: str, module: str = "llmvm.server.prompts.python") -> Dict[str, Any]:
         prompt_file = resources.files(module) / prompt_name
 
         if not os.path.exists(str(prompt_file)):
-            raise ValueError(f'Prompt file {prompt_file} does not exist')
+            raise ValueError(f"Prompt file {prompt_file} does not exist")
 
-        with open(prompt_file, 'r') as f:  # type: ignore
+        with open(prompt_file, "r") as f:  # type: ignore
             prompt = f.read()
 
-            if '[system_message]' not in prompt:
-                raise ValueError('Prompt file must contain [system_message]')
+            if "[system_message]" not in prompt:
+                raise ValueError("Prompt file must contain [system_message]")
 
-            if '[user_message]' not in prompt:
-                raise ValueError('Prompt file must contain [user_message]')
+            if "[user_message]" not in prompt:
+                raise ValueError("Prompt file must contain [user_message]")
 
-            system_message = Helpers.in_between(prompt, '[system_message]', '[user_message]').strip()
-            user_message = prompt[prompt.find('[user_message]') + len('[user_message]'):].strip()
+            system_message = Helpers.in_between(prompt, "[system_message]", "[user_message]").strip()
+            user_message = prompt[prompt.find("[user_message]") + len("[user_message]") :].strip()
             templates = []
 
             temp_prompt = prompt
-            while '{{' and '}}' in temp_prompt:
-                templates.append(Helpers.in_between(temp_prompt, '{{', '}}'))
-                temp_prompt = temp_prompt.split('}}', 1)[-1]
+            while "{{" and "}}" in temp_prompt:
+                templates.append(Helpers.in_between(temp_prompt, "{{", "}}"))
+                temp_prompt = temp_prompt.split("}}", 1)[-1]
 
-            return {
-                'system_message': system_message,
-                'user_message': user_message,
-                'templates': templates
-            }
+            return {"system_message": system_message, "user_message": user_message, "templates": templates}
 
     @staticmethod
     def get_prompts(
         prompt_text: str,
         template: Dict[str, str],
-        user_token: str = 'User',
-        assistant_token: str = 'Assistant',
-        scratchpad_token: str = 'scratchpad',
-        append_token: str = '',
+        user_token: str = "User",
+        assistant_token: str = "Assistant",
+        scratchpad_token: str = "scratchpad",
+        append_token: str = "",
     ) -> Tuple[System, User]:
-        if '[system_message]' not in prompt_text:
-            raise ValueError('Prompt file must contain [system_message]')
+        if "[system_message]" not in prompt_text:
+            raise ValueError("Prompt file must contain [system_message]")
 
-        if '[user_message]' not in prompt_text:
-            raise ValueError('Prompt file must contain [user_message]')
+        if "[user_message]" not in prompt_text:
+            raise ValueError("Prompt file must contain [user_message]")
 
-        system_message = Helpers.in_between(prompt_text, '[system_message]', '[user_message]').strip()
-        user_message = prompt_text[prompt_text.find('[user_message]') + len('[user_message]'):].strip()
+        system_message = Helpers.in_between(prompt_text, "[system_message]", "[user_message]").strip()
+        user_message = prompt_text[prompt_text.find("[user_message]") + len("[user_message]") :].strip()
         templates = []
 
         temp_prompt = prompt_text
-        while '{{' and '}}' in temp_prompt:
-            templates.append(Helpers.in_between(temp_prompt, '{{', '}}'))
-            temp_prompt = temp_prompt.split('}}', 1)[-1]
+        while "{{" and "}}" in temp_prompt:
+            templates.append(Helpers.in_between(temp_prompt, "{{", "}}"))
+            temp_prompt = temp_prompt.split("}}", 1)[-1]
 
-        prompt = {
-            'system_message': system_message,
-            'user_message': user_message,
-            'templates': templates
-        }
+        prompt = {"system_message": system_message, "user_message": user_message, "templates": templates}
 
-        if not template.get('user_token'):
-            template['user_token'] = user_token
-            template['user_colon_token'] = user_token + ':'
-        if not template.get('assistant_token'):
-            template['assistant_token'] = assistant_token
-            template['assistant_colon_token'] = assistant_token + ':'
-        if not template.get('scratchpad_token'):
-            template['scratchpad_token'] = scratchpad_token
+        if not template.get("user_token"):
+            template["user_token"] = user_token
+            template["user_colon_token"] = user_token + ":"
+        if not template.get("assistant_token"):
+            template["assistant_token"] = assistant_token
+            template["assistant_colon_token"] = assistant_token + ":"
+        if not template.get("scratchpad_token"):
+            template["scratchpad_token"] = scratchpad_token
 
         for key, value in template.items():
-            prompt['system_message'] = prompt['system_message'].replace('{{' + key + '}}', value)
-            prompt['user_message'] = prompt['user_message'].replace('{{' + key + '}}', value)
+            prompt["system_message"] = prompt["system_message"].replace("{{" + key + "}}", value)
+            prompt["user_message"] = prompt["user_message"].replace("{{" + key + "}}", value)
 
         # deal with exec() statements to inject things like datetime
-        import datetime
-        for message_key in ['system_message', 'user_message']:
+        for message_key in ["system_message", "user_message"]:
             message = prompt[message_key]
-            while '{{' in message and '}}' in message:
-                start = message.find('{{')
-                end = message.find('}}', start)
+            while "{{" in message and "}}" in message:
+                start = message.find("{{")
+                end = message.find("}}", start)
                 if end == -1:  # No closing '}}' found
                     break
 
-                key = message[start+2:end]
-                replacement = ''
+                key = message[start + 2 : end]
+                replacement = ""
 
-                if key.startswith('exec('):
+                if key.startswith("exec("):
                     try:
                         replacement = str(eval(key[5:-1]))
-                    except Exception as e:
+                    except Exception:
                         pass
                 else:
                     replacement = key
 
-                message = message[:start] + replacement + message[end+2:]
+                message = message[:start] + replacement + message[end + 2 :]
 
             prompt[message_key] = message
-        return (System(prompt['system_message']), User(TextContent(prompt['user_message'] + append_token)))
+        return (System(prompt["system_message"]), User(TextContent(prompt["user_message"] + append_token)))
 
     @staticmethod
     def load_and_populate_prompt(
         prompt_name: str,
         template: Dict[str, str],
-        user_token: str = 'User',
-        assistant_token: str = 'Assistant',
-        scratchpad_token: str = 'scratchpad',
-        append_token: str = '',
-        module: str = 'llmvm.server.prompts.python'
+        user_token: str = "User",
+        assistant_token: str = "Assistant",
+        scratchpad_token: str = "scratchpad",
+        append_token: str = "",
+        module: str = "llmvm.server.prompts.python",
     ) -> Dict[str, Any]:
         import logging
 
         # Use execution mode to select the appropriate prompt for tool_execution.prompt
-        if prompt_name == 'tool_execution.prompt':
-            prompt_name = Helpers.get_execution_mode_prompt('tool_execution.prompt')
+        if prompt_name == "tool_execution.prompt":
+            prompt_name = Helpers.get_execution_mode_prompt("tool_execution.prompt")
 
         # Log prompt usage at INFO level
         logging.info(f"Loading prompt: {prompt_name} (module: {module})")
@@ -3028,75 +3077,67 @@ class Helpers():
         prompt: Dict[str, Any] = Helpers.load_resources_prompt(prompt_name, module)
 
         try:
-            if not template.get('user_token'):
-                template['user_token'] = user_token
-                template['user_colon_token'] = user_token + ':'
-            if not template.get('assistant_token'):
-                template['assistant_token'] = assistant_token
-                template['assistant_colon_token'] = assistant_token + ':'
-            if not template.get('scratchpad_token'):
-                template['scratchpad_token'] = scratchpad_token
+            if not template.get("user_token"):
+                template["user_token"] = user_token
+                template["user_colon_token"] = user_token + ":"
+            if not template.get("assistant_token"):
+                template["assistant_token"] = assistant_token
+                template["assistant_colon_token"] = assistant_token + ":"
+            if not template.get("scratchpad_token"):
+                template["scratchpad_token"] = scratchpad_token
 
             for key, value in template.items():
-                prompt['system_message'] = prompt['system_message'].replace('{{' + key + '}}', value)
-                prompt['user_message'] = prompt['user_message'].replace('{{' + key + '}}', value)
-
-            # todo hack!
-            result = Helpers.get_value_from_parent_frame('thread')
-            thread_id = 0
-            if result:
-                thread_id = result.id
+                prompt["system_message"] = prompt["system_message"].replace("{{" + key + "}}", value)
+                prompt["user_message"] = prompt["user_message"].replace("{{" + key + "}}", value)
 
             # deal with exec() statements to inject things like datetime
-            import datetime
-            import tzlocal
 
-            for message_key in ['system_message', 'user_message']:
+            for message_key in ["system_message", "user_message"]:
                 message = prompt[message_key]
-                while '{{' in message and '}}' in message:
-                    start = message.find('{{')
-                    end = message.find('}}', start)
+                while "{{" in message and "}}" in message:
+                    start = message.find("{{")
+                    end = message.find("}}", start)
                     if end == -1:  # No closing '}}' found
                         break
 
-                    key = message[start+2:end]
-                    replacement = ''
+                    key = message[start + 2 : end]
+                    replacement = ""
 
-                    if key.startswith('exec('):
+                    if key.startswith("exec("):
                         try:
                             replacement = str(eval(key[5:-1]))
-                        except Exception as e:
+                        except Exception:
                             pass
                     else:
                         replacement = key
 
-                    message = message[:start] + replacement + message[end+2:]
+                    message = message[:start] + replacement + message[end + 2 :]
 
                 prompt[message_key] = message
 
-            prompt['user_message'] += f'{append_token}'
-            prompt['prompt_name'] = prompt_name
+            prompt["user_message"] += f"{append_token}"
+            prompt["prompt_name"] = prompt_name
             return prompt
         except Exception as e:
             result = {
-                'system_message': f'Error loading prompt: {str(e)}',
-                'user_message': f'Error loading prompt: {str(e)}',
-                'templates': []
+                "system_message": f"Error loading prompt: {str(e)}",
+                "user_message": f"Error loading prompt: {str(e)}",
+                "templates": [],
             }
             return result
 
     @staticmethod
-    def get_execution_mode_prompt(default_prompt: str = 'tool_execution.prompt') -> str:
+    def get_execution_mode_prompt(default_prompt: str = "tool_execution.prompt") -> str:
         """
         Get the appropriate prompt based on LLMVM_MODE environment variable.
         Falls back to default_prompt if not set.
 
         Usage: LLMVM_MODE=data_scientist python -m llmvm.server
         """
-        mode = os.getenv('LLMVM_MODE', 'general')
+        mode = os.getenv("LLMVM_MODE", "general")
 
-        if mode == 'data_scientist':
-            return 'data_scientist_expert.prompt'
+        if mode == "data_scientist":
+            return "data_scientist_expert.prompt"
         else:
             return default_prompt
 
@@ -3104,24 +3145,28 @@ class Helpers():
     def prompt_user(
         prompt_name: str,
         template: Dict[str, str],
-        user_token: str = 'User',
-        assistant_token: str = 'Assistant',
-        scratchpad_token: str = 'scratchpad',
-        append_token: str = '',
-        module: str = 'llmvm.server.prompts.python'
+        user_token: str = "User",
+        assistant_token: str = "Assistant",
+        scratchpad_token: str = "scratchpad",
+        append_token: str = "",
+        module: str = "llmvm.server.prompts.python",
     ) -> Message:
-        prompt = Helpers.load_and_populate_prompt(prompt_name, template, user_token, assistant_token, scratchpad_token, append_token, module)
-        return User([TextContent(prompt['user_message'])])
+        prompt = Helpers.load_and_populate_prompt(
+            prompt_name, template, user_token, assistant_token, scratchpad_token, append_token, module
+        )
+        return User([TextContent(prompt["user_message"])])
 
     @staticmethod
     def prompts(
         prompt_name: str,
         template: Dict[str, str],
-        user_token: str = 'User',
-        assistant_token: str = 'Assistant',
-        scratchpad_token: str = 'scratchpad',
-        append_token: str = '',
-        module: str = 'llmvm.server.prompts.python'
+        user_token: str = "User",
+        assistant_token: str = "Assistant",
+        scratchpad_token: str = "scratchpad",
+        append_token: str = "",
+        module: str = "llmvm.server.prompts.python",
     ) -> Tuple[System, User]:
-        prompt = Helpers.load_and_populate_prompt(prompt_name, template, user_token, assistant_token, scratchpad_token, append_token, module)
-        return (System(prompt['system_message']), User([TextContent(prompt['user_message'])]))
+        prompt = Helpers.load_and_populate_prompt(
+            prompt_name, template, user_token, assistant_token, scratchpad_token, append_token, module
+        )
+        return (System(prompt["system_message"]), User([TextContent(prompt["user_message"])]))

@@ -16,23 +16,21 @@ Organization:
 5. Event emission
 6. Utility methods
 """
+
 import re
 import logging
 import time
 import openai
-from typing import Callable, Awaitable
+from typing import Callable, Awaitable, TYPE_CHECKING
 from dataclasses import dataclass
 
 from sabre.common.executors.response import ResponseExecutor
 from sabre.server.python_runtime import PythonRuntime
 from sabre.server.streaming_parser import StreamingHelperParser
 from sabre.common import (
-    Assistant,
     Event,
     EventType,
     ResponseStartEvent,
-    ResponseTokenEvent,
-    ResponseThinkingTokenEvent,
     ResponseTextEvent,
     HelpersExtractedEvent,
     HelpersStartEvent,
@@ -45,12 +43,16 @@ from sabre.common import (
     ExecutionStatus,
 )
 
+if TYPE_CHECKING:
+    from sabre.common.models.messages import ImageContent
+
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class OrchestrationResult:
     """Result of orchestrating a conversation."""
+
     success: bool
     final_response: str
     conversation_id: str
@@ -61,6 +63,7 @@ class OrchestrationResult:
 @dataclass
 class ParsedResponse:
     """Result of streaming and parsing a response."""
+
     full_text: str
     helpers: list[str]  # Extracted <helpers> blocks
     response_id: str
@@ -80,12 +83,7 @@ class Orchestrator:
     - Continue until completion
     """
 
-    def __init__(
-        self,
-        executor: ResponseExecutor,
-        python_runtime: PythonRuntime,
-        max_iterations: int = 10
-    ):
+    def __init__(self, executor: ResponseExecutor, python_runtime: PythonRuntime, max_iterations: int = 10):
         """
         Initialize orchestrator.
 
@@ -158,7 +156,7 @@ class Orchestrator:
                     "iteration": iteration,
                     "model": model,
                     "conversation_id": conversation_id,
-                }
+                },
             )
 
             # Get tree context for events
@@ -166,13 +164,15 @@ class Orchestrator:
 
             # Emit response_start event
             if event_callback:
-                await event_callback(ResponseStartEvent(
-                    **tree_context,
-                    model=model or "gpt-4o",
-                    round_id=str(iteration),
-                    prompt_tokens=0,  # Will be updated by executor
-                    previous_response_id=current_response_id
-                ))
+                await event_callback(
+                    ResponseStartEvent(
+                        **tree_context,
+                        model=model or "gpt-4o",
+                        round_id=str(iteration),
+                        prompt_tokens=0,  # Will be updated by executor
+                        previous_response_id=current_response_id,
+                    )
+                )
 
             # Stream response and parse helpers in real-time
             parsed = await self._stream_and_parse_response(
@@ -199,18 +199,16 @@ class Orchestrator:
 
                 # Emit error event
                 if event_callback:
-                    await event_callback(ErrorEvent(
-                        **tree_context,
-                        error_message=full_response_text,
-                        error_type="api_error"
-                    ))
+                    await event_callback(
+                        ErrorEvent(**tree_context, error_message=full_response_text, error_type="api_error")
+                    )
 
                 return OrchestrationResult(
                     success=False,
                     final_response=full_response_text,
                     conversation_id=conversation_id,
                     response_id=current_response_id,
-                    error=full_response_text
+                    error=full_response_text,
                 )
 
             # Check if we're done
@@ -224,11 +222,7 @@ class Orchestrator:
                 final_message = full_response_text
 
                 # Emit complete event
-                await self._emit_complete_event(
-                    tree_context,
-                    final_message,
-                    event_callback
-                )
+                await self._emit_complete_event(tree_context, final_message, event_callback)
 
                 return OrchestrationResult(
                     success=True,
@@ -240,10 +234,7 @@ class Orchestrator:
             # Execute helpers (may trigger recursive orchestrator calls)
             # This saves images to disk and appends markdown URLs to result text
             execution_results = await self._execute_helpers(
-                helpers=parsed.helpers,
-                tree=tree,
-                parent_tree_context=tree_context,
-                event_callback=event_callback
+                helpers=parsed.helpers, tree=tree, parent_tree_context=tree_context, event_callback=event_callback
             )
 
             # Upload images to Files API (converts base64 to file_id references)
@@ -262,8 +253,7 @@ class Orchestrator:
                 logger.info(f"DEBUG: Result {idx}: {len(content_items)} content items")
 
             response_with_results, image_refs = self._replace_helpers_with_results(
-                full_response_text,
-                execution_results
+                full_response_text, execution_results
             )
 
             logger.info(f"DEBUG: response_with_results={response_with_results[:500]}")
@@ -301,7 +291,7 @@ class Orchestrator:
         input_text: str | tuple[str, list],
         tree_context: dict,
         event_callback: Callable[[Event], Awaitable[None]] | None,
-        **kwargs
+        **kwargs,
     ) -> ParsedResponse:
         """
         Stream response from executor and parse <helpers> blocks in real-time.
@@ -340,7 +330,7 @@ class Orchestrator:
             nonlocal full_text, response_id
 
             if event.type == EventType.RESPONSE_TOKEN:
-                token = event.data['token']
+                token = event.data["token"]
                 full_text += token
 
                 # Feed to parser (detects <helpers> tags)
@@ -366,7 +356,7 @@ class Orchestrator:
             instructions=self.system_instructions,
             event_callback=streaming_token_handler,
             tree_context=tree_context,
-            **kwargs
+            **kwargs,
         )
 
         response_id = response.response_id
@@ -382,16 +372,18 @@ class Orchestrator:
 
         # Emit response_text event with full response and token usage
         if event_callback:
-            await event_callback(ResponseTextEvent(
-                **tree_context,
-                text=full_text,
-                text_length=len(full_text),
-                has_helpers=len(helpers) > 0,
-                helper_count=len(helpers),
-                input_tokens=response.input_tokens,
-                output_tokens=response.output_tokens,
-                reasoning_tokens=response.reasoning_tokens,
-            ))
+            await event_callback(
+                ResponseTextEvent(
+                    **tree_context,
+                    text=full_text,
+                    text_length=len(full_text),
+                    has_helpers=len(helpers) > 0,
+                    helper_count=len(helpers),
+                    input_tokens=response.input_tokens,
+                    output_tokens=response.output_tokens,
+                    reasoning_tokens=response.reasoning_tokens,
+                )
+            )
 
         # NOTE: We DON'T emit helpers_extracted events here
         # They'll be emitted in _execute_helpers() right before each execution
@@ -415,7 +407,7 @@ class Orchestrator:
         helpers: list[str],
         tree: ExecutionTree,
         parent_tree_context: dict,
-        event_callback: Callable[[Event], Awaitable[None]] | None
+        event_callback: Callable[[Event], Awaitable[None]] | None,
     ) -> list[tuple[str, list]]:
         """
         Execute helper code blocks.
@@ -442,36 +434,25 @@ class Orchestrator:
         results = []
 
         for i, code in enumerate(helpers):
-            logger.info(f"Executing helper {i+1}/{len(helpers)}")
+            logger.info(f"Executing helper {i + 1}/{len(helpers)}")
 
             # Push node for this helper execution
             helper_node = tree.push(
-                ExecutionNodeType.HELPERS_EXECUTION,
-                metadata={
-                    "block_number": i + 1,
-                    "code_preview": code[:200]
-                }
+                ExecutionNodeType.HELPERS_EXECUTION, metadata={"block_number": i + 1, "code_preview": code[:200]}
             )
 
             # Get tree context for this helper (inherit parent's conversation_id)
-            parent_conv_id = parent_tree_context.get('conversation_id', '')
+            parent_conv_id = parent_tree_context.get("conversation_id", "")
             helper_tree_context = self._build_tree_context(tree, helper_node, parent_conv_id)
 
             # Emit helpers_extracted event BEFORE execution
             # This shows the code block to the user at the right time
             if event_callback:
-                await event_callback(HelpersExtractedEvent(
-                    **helper_tree_context,
-                    code=code,
-                    block_count=i + 1
-                ))
+                await event_callback(HelpersExtractedEvent(**helper_tree_context, code=code, block_count=i + 1))
 
             # Emit start event
             if event_callback:
-                await event_callback(HelpersStartEvent(
-                    **helper_tree_context,
-                    code=code
-                ))
+                await event_callback(HelpersStartEvent(**helper_tree_context, code=code))
 
             # Execute code (may trigger recursive orchestrator.run via llm_call)
             start_time = time.time()
@@ -486,11 +467,32 @@ class Orchestrator:
                 saved_content = []
                 image_urls = []
 
+                # Calculate user message number by counting existing figure files
+                from sabre.common.paths import get_files_dir
+                import glob
+
+                files_dir = get_files_dir(helper_tree_context["conversation_id"])
+                files_dir.mkdir(parents=True, exist_ok=True)
+
+                # Count existing figure files to get next message number
+                existing_figures = glob.glob(str(files_dir / "figure_*.png"))
+                # Extract message numbers from filenames (figure_1_1_1.png -> 1)
+                message_nums = set()
+                for fig_path in existing_figures:
+                    parts = fig_path.split("_")
+                    if len(parts) >= 2 and parts[0].endswith("figure"):
+                        try:
+                            message_nums.add(int(parts[1]))
+                        except ValueError:
+                            pass
+                message_num = (max(message_nums) + 1) if message_nums else 1
+
                 for item in result.content:
                     if isinstance(item, ImageContent) and item.image_data:
                         # Save image to disk and get URL
-                        filename = f"figure_{i+1}_{len(image_urls)+1}.png"
-                        url = self._save_image_to_disk(item, helper_tree_context['conversation_id'], filename)
+                        # Use message_num for unique filenames: figure_{message_num}_{helper_num}_{image_num}.png
+                        filename = f"figure_{message_num}_{i + 1}_{len(image_urls) + 1}.png"
+                        url = self._save_image_to_disk(item, helper_tree_context["conversation_id"], filename)
                         image_urls.append(url)
                         # Keep original base64 ImageContent for Files API upload
                         saved_content.append(item)
@@ -506,39 +508,83 @@ class Orchestrator:
                 output_with_urls = formatted_output
                 if image_urls:
                     output_with_urls += "\n\n" + "\n".join(
-                        f"![Figure {idx+1}]({url})" for idx, url in enumerate(image_urls)
+                        f"![Figure {idx + 1}]({url})" for idx, url in enumerate(image_urls)
+                    )
+
+                # If result is very large (>10KB), save to file and reference by file_id
+                MAX_INLINE_CHARS = 10000  # 10KB threshold
+                if len(output_with_urls) > MAX_INLINE_CHARS:
+                    logger.info(
+                        f"Result is large ({len(output_with_urls)} chars), saving to file for LLM reference"
+                    )
+                    # Save to file and upload to Files API
+                    file_id = await self._save_large_result_to_file(
+                        output_with_urls, helper_tree_context["conversation_id"], i + 1
+                    )
+                    # Replace with file reference for LLM (show preview + file_id)
+                    output_with_urls = (
+                        f"[Large result ({len(output_with_urls)} chars) uploaded to file_id: {file_id}]\n\n"
+                        f"First 500 chars:\n{output_with_urls[:500]}\n\n"
+                        f"[...truncated...]\n\n"
+                        f"Last 500 chars:\n{output_with_urls[-500:]}\n\n"
+                        f"The full content is available in the attached file."
                     )
 
                 # Store text with URLs for LLM, but keep original content for events
                 results.append((output_with_urls, saved_content))
                 tree.pop(ExecutionStatus.COMPLETED)
-                logger.info(f"Helper {i+1} succeeded: {len(result.output)} chars, {len(result.content)} content items, {len(image_urls)} images saved")
+                logger.info(
+                    f"Helper {i + 1} succeeded: {len(result.output)} chars, {len(result.content)} content items, {len(image_urls)} images saved"
+                )
             else:
                 # On error, just text (no content)
                 results.append((f"ERROR: {result.error}", []))
                 tree.pop(ExecutionStatus.ERROR)
-                logger.error(f"Helper {i+1} failed: {result.error}")
+                logger.error(f"Helper {i + 1} failed: {result.error}")
 
             # Emit end event
             if event_callback:
                 # Filter: keep URL-based ImageContent and TextContent, exclude base64 ImageContent
                 from sabre.common.models.messages import TextContent, ImageContent
+
                 output_text, content_items = results[-1]
 
                 # Filter: exclude base64 images (they're huge), keep URL images
                 display_content = [
-                    item for item in content_items
-                    if not (isinstance(item, ImageContent) and item.image_data and not item.image_data.startswith('http'))
+                    item
+                    for item in content_items
+                    if not (
+                        isinstance(item, ImageContent) and item.image_data and not item.image_data.startswith("http")
+                    )
                 ]
-                event_result = display_content if display_content else [TextContent(output_text)]
 
-                await event_callback(HelpersEndEvent(
-                    **helper_tree_context,
-                    result=event_result,  # list[Content] with URL ImageContent (no base64)
-                    duration_ms=duration_ms,
-                    block_number=i + 1,
-                    code_preview=code[:100],  # First 100 chars as preview
-                ))
+                # Truncate output_text for WebSocket event (1MB frame limit)
+                # Keep full text in results for LLM continuation
+                MAX_DISPLAY_CHARS = 1000  # Show first 500 + last 500 chars
+                display_text = output_text
+                if len(output_text) > MAX_DISPLAY_CHARS:
+                    truncated_count = len(output_text) - MAX_DISPLAY_CHARS
+                    display_text = (
+                        output_text[:500]
+                        + f"\n\n[...truncated {truncated_count} characters...]\n\n"
+                        + output_text[-500:]
+                    )
+                    logger.info(
+                        f"Truncated helper result for event display: {len(output_text)} → {len(display_text)} chars"
+                    )
+
+                # Always include output_text as TextContent (contains markdown URLs for images)
+                event_result = [TextContent(display_text)] + display_content
+
+                await event_callback(
+                    HelpersEndEvent(
+                        **helper_tree_context,
+                        result=event_result,  # list[Content] with text (including markdown URLs) and filtered images
+                        duration_ms=duration_ms,
+                        block_number=i + 1,
+                        code_preview=code[:100],  # First 100 chars as preview
+                    )
+                )
 
         return results
 
@@ -571,25 +617,22 @@ class Orchestrator:
         stripped = raw_output.strip()
 
         # Simple heuristic: check if output looks like a list
-        if stripped.startswith('[') and stripped.endswith(']'):
-            prompt_name = 'list_result.prompt'
-            template_key = 'list_result'
+        if stripped.startswith("[") and stripped.endswith("]"):
+            prompt_name = "list_result.prompt"
+            template_key = "list_result"
             logger.debug("Using list_result.prompt for formatting")
         else:
             # Default to str_result for all other outputs
-            prompt_name = 'str_result.prompt'
-            template_key = 'str_result'
+            prompt_name = "str_result.prompt"
+            template_key = "str_result"
             logger.debug("Using str_result.prompt for formatting")
 
         try:
             # Load result prompt and template the raw output
-            prompt = PromptLoader.load(
-                prompt_name,
-                template={template_key: raw_output}
-            )
+            prompt = PromptLoader.load(prompt_name, template={template_key: raw_output})
 
             # Return just the user_message part (as per old llmvm pattern)
-            formatted = prompt['user_message']
+            formatted = prompt["user_message"]
             logger.info(f"Result formatted: {len(raw_output)} → {len(formatted)} chars")
             return formatted
 
@@ -633,16 +676,16 @@ class Orchestrator:
             else:
                 path_summary.append(n.node_type.value)
 
-        path_summary_str = ' → '.join(path_summary)
+        path_summary_str = " → ".join(path_summary)
         logger.info(f"Execution path: {path_summary_str}")
 
         return {
-            'node_id': node.id,
-            'parent_id': node.parent_id,
-            'depth': tree.get_depth(),
-            'path': [n.id for n in tree.get_path()],
-            'path_summary': path_summary_str,  # Human-readable path for client display
-            'conversation_id': conversation_id,
+            "node_id": node.id,
+            "parent_id": node.parent_id,
+            "depth": tree.get_depth(),
+            "path": [n.id for n in tree.get_path()],
+            "path_summary": path_summary_str,  # Human-readable path for client display
+            "conversation_id": conversation_id,
         }
 
     # ============================================================
@@ -650,10 +693,7 @@ class Orchestrator:
     # ============================================================
 
     async def _emit_complete_event(
-        self,
-        tree_context: dict,
-        final_message: str,
-        callback: Callable[[Event], Awaitable[None]] | None
+        self, tree_context: dict, final_message: str, callback: Callable[[Event], Awaitable[None]] | None
     ):
         """
         Emit completion event.
@@ -664,10 +704,7 @@ class Orchestrator:
             callback: Event callback
         """
         if callback:
-            await callback(CompleteEvent(
-                **tree_context,
-                final_message=final_message
-            ))
+            await callback(CompleteEvent(**tree_context, final_message=final_message))
 
     # ============================================================
     # CONVERSATION MANAGEMENT
@@ -682,7 +719,7 @@ class Orchestrator:
         """
         from sabre.common.utils.prompt_loader import PromptLoader
 
-        prompt_name = 'python_continuation_execution_responses.prompt'
+        prompt_name = "python_continuation_execution_responses.prompt"
 
         # Get available functions dynamically from runtime
         available_functions = self.runtime.get_available_functions()
@@ -691,14 +728,14 @@ class Orchestrator:
         prompt_parts = PromptLoader.load(
             prompt_name,
             template={
-                'context_window_tokens': '128000',
-                'context_window_words': '96000',
-                'context_window_bytes': '512000',
-                'scratchpad_token': 'scratchpad',
-                'functions': available_functions,
-                'user_colon_token': 'User:',
-                'assistant_colon_token': 'Assistant:',
-            }
+                "context_window_tokens": "128000",
+                "context_window_words": "96000",
+                "context_window_bytes": "512000",
+                "scratchpad_token": "scratchpad",
+                "functions": available_functions,
+                "user_colon_token": "User:",
+                "assistant_colon_token": "Assistant:",
+            },
         )
 
         # Combine system_message and user_message
@@ -707,11 +744,7 @@ class Orchestrator:
 
         return instructions
 
-    async def _create_conversation_with_instructions(
-        self,
-        instructions: str,
-        model: str | None = None
-    ) -> str:
+    async def _create_conversation_with_instructions(self, instructions: str, model: str | None = None) -> str:
         """
         Create a new conversation with given instructions.
 
@@ -728,11 +761,7 @@ class Orchestrator:
         client = AsyncOpenAI()
 
         # Create conversation
-        conversation = await client.conversations.create(
-            metadata={
-                "session_type": "orchestrator_managed"
-            }
-        )
+        conversation = await client.conversations.create(metadata={"session_type": "orchestrator_managed"})
 
         # Store instructions for all future calls
         self.system_instructions = instructions
@@ -755,10 +784,10 @@ class Orchestrator:
             )
         except openai.RateLimitError as e:
             # Check if this is insufficient quota (not retriable) or rate limit (retriable)
-            error_body = getattr(e, 'body', {})
-            error_code = error_body.get('error', {}).get('code')
+            error_body = getattr(e, "body", {})
+            error_code = error_body.get("error", {}).get("code")
 
-            if error_code == 'insufficient_quota':
+            if error_code == "insufficient_quota":
                 logger.error(f"Insufficient API quota: {e}")
                 raise RuntimeError(
                     "OpenAI API quota exceeded. Please check your billing details at "
@@ -777,7 +806,7 @@ class Orchestrator:
     # FILE MANAGEMENT
     # ============================================================
 
-    def _save_image_to_disk(self, image_content: 'ImageContent', conversation_id: str, filename: str) -> str:
+    def _save_image_to_disk(self, image_content: "ImageContent", conversation_id: str, filename: str) -> str:
         """
         Save image to disk and return URL.
 
@@ -809,7 +838,7 @@ class Orchestrator:
 
         return url
 
-    async def _upload_image_to_files_api(self, image_content: 'ImageContent') -> str:
+    async def _upload_image_to_files_api(self, image_content: "ImageContent") -> str:
         """
         Upload image to OpenAI Files API and return file_id.
 
@@ -843,7 +872,7 @@ class Orchestrator:
             logger.info(f"Uploading image to OpenAI Files API ({len(image_bytes)} bytes)")
             file_response = await client.files.create(
                 file=file_obj,
-                purpose="assistants"  # Required purpose for file uploads
+                purpose="assistants",  # Required purpose for file uploads
             )
 
             logger.info(f"Image uploaded successfully: {file_response.id}")
@@ -851,6 +880,58 @@ class Orchestrator:
 
         except Exception as e:
             logger.error(f"Failed to upload image to Files API: {e}")
+            raise
+
+    async def _save_large_result_to_file(self, content: str, conversation_id: str, helper_num: int) -> str:
+        """
+        Save large helper result to file and upload to Files API.
+
+        For results >10KB, saves to disk and uploads to OpenAI Files API,
+        returning a file_id that can be referenced in the conversation.
+
+        Args:
+            content: Large text content to save
+            conversation_id: Conversation ID for directory organization
+            helper_num: Helper number for unique filename
+
+        Returns:
+            file_id string (e.g., "file-abc123...")
+
+        Raises:
+            Exception if upload fails
+        """
+        from sabre.common.paths import get_files_dir
+        import io
+        from openai import AsyncOpenAI
+
+        # Save to disk first
+        files_dir = get_files_dir(conversation_id)
+        files_dir.mkdir(parents=True, exist_ok=True)
+
+        filename = f"helper_{helper_num}_result.txt"
+        file_path = files_dir / filename
+        file_path.write_text(content, encoding="utf-8")
+        logger.info(f"Saved large result to {file_path}")
+
+        # Upload to Files API
+        client = AsyncOpenAI(api_key=self.executor.api_key)
+
+        try:
+            # Create file-like object from content
+            file_obj = io.BytesIO(content.encode("utf-8"))
+            file_obj.name = filename
+
+            logger.info(f"Uploading large result to OpenAI Files API ({len(content)} chars)")
+            file_response = await client.files.create(
+                file=file_obj,
+                purpose="assistants",  # Required purpose for file uploads
+            )
+
+            logger.info(f"Large result uploaded successfully: {file_response.id}")
+            return file_response.id
+
+        except Exception as e:
+            logger.error(f"Failed to upload large result to Files API: {e}")
             raise
 
     async def _ensure_images_uploaded(self, results: list[tuple[str, list]]) -> list[tuple[str, list]]:
@@ -912,7 +993,7 @@ class Orchestrator:
         """
         from sabre.common.models.messages import ImageContent
 
-        pattern = r'<helpers>.*?</helpers>'
+        pattern = r"<helpers>.*?</helpers>"
         result_index = 0
         all_images = []
 
@@ -924,7 +1005,9 @@ class Orchestrator:
             logger.info(f"DEBUG: replacer called for match {result_index}, matched text: {match.group(0)[:100]}")
             if result_index < len(results):
                 output_text, content_items = results[result_index]
-                logger.info(f"DEBUG: replacer using result {result_index}: output_text={output_text[:200] if output_text else 'EMPTY'}")
+                logger.info(
+                    f"DEBUG: replacer using result {result_index}: output_text={output_text[:200] if output_text else 'EMPTY'}"
+                )
 
                 # Collect image file_ids for continuation
                 for item in content_items:
@@ -933,8 +1016,13 @@ class Orchestrator:
 
                 # Truncate very large results
                 if len(output_text) > MAX_RESULT_CHARS:
-                    output_text = output_text[:MAX_RESULT_CHARS] + f"\n\n[...truncated {len(output_text) - MAX_RESULT_CHARS} chars]"
-                    logger.warning(f"Truncated helper result {result_index + 1} from {len(results[result_index][0])} to {MAX_RESULT_CHARS} chars")
+                    output_text = (
+                        output_text[:MAX_RESULT_CHARS]
+                        + f"\n\n[...truncated {len(output_text) - MAX_RESULT_CHARS} chars]"
+                    )
+                    logger.warning(
+                        f"Truncated helper result {result_index + 1} from {len(results[result_index][0])} to {MAX_RESULT_CHARS} chars"
+                    )
 
                 replacement = f"<helpers_result>{output_text}</helpers_result>"
                 logger.info(f"DEBUG: replacement={replacement[:200]}")

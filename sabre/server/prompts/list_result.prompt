@@ -4,7 +4,6 @@ You are a helpful assistant.
 [user_message]
 I have a list that I'll put under "Result:" that can be used in future messages as data to solve problems or answer queries.
 
-Result: 
+Result:
 
 {{list_result}}
-

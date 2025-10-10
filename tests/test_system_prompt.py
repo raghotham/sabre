@@ -5,6 +5,7 @@ import asyncio
 import json
 import websockets
 
+
 async def test():
     """Test WebSocket connection and message sending."""
     uri = "ws://localhost:8011/message"
@@ -13,10 +14,7 @@ async def test():
         print("Connected to server")
 
         # Send a message that should trigger <helpers> usage
-        message = {
-            "type": "message",
-            "content": "Use bash to list files in the current directory"
-        }
+        message = {"type": "message", "content": "Use bash to list files in the current directory"}
 
         print(f"\nSending: {message}")
         await websocket.send(json.dumps(message))
@@ -51,6 +49,7 @@ async def test():
             print("\n\nTimeout waiting for response")
         except websockets.exceptions.ConnectionClosed:
             print("\n\nConnection closed")
+
 
 if __name__ == "__main__":
     asyncio.run(test())

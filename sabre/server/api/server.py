@@ -3,13 +3,14 @@ FastAPI server for sabre.
 
 Simple WebSocket-based server that handles chat messages and streams back responses.
 """
+
 import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
@@ -18,8 +19,6 @@ from sabre.common import (
     ExecutionTree,
     ExecutionNodeType,
     ExecutionStatus,
-    User,
-    TextContent,
     Event,
     CancelledEvent,
     ErrorEvent,
@@ -50,10 +49,7 @@ class ConnectionManager:
         await websocket.accept()
         self.active_connections[client_id] = websocket
         # Session has: conversation_id (created on first message), tree
-        self.sessions[client_id] = {
-            'conversation_id': None,
-            'tree': ExecutionTree()
-        }
+        self.sessions[client_id] = {"conversation_id": None, "tree": ExecutionTree()}
         logger.info(f"Client {client_id} connected")
 
     def disconnect(self, client_id: str):
@@ -68,13 +64,18 @@ class ConnectionManager:
         """Send event to client."""
         if client_id in self.active_connections:
             websocket = self.active_connections[client_id]
-            timestamp_str = event.timestamp.isoformat() if hasattr(event, 'timestamp') else 'N/A'
+            timestamp_str = event.timestamp.isoformat() if hasattr(event, "timestamp") else "N/A"
             # Log with node_id and depth for tracking
-            node_id = event.node_id[:8] if hasattr(event, 'node_id') and event.node_id else 'N/A'
-            depth = event.depth if hasattr(event, 'depth') else 'N/A'
-            logger.info(f"→ SEND event: type={event.type.value}, node={node_id}, depth={depth}, timestamp={timestamp_str}")
+            node_id = event.node_id[:8] if hasattr(event, "node_id") and event.node_id else "N/A"
+            depth = event.depth if hasattr(event, "depth") else "N/A"
+            logger.info(
+                f"→ SEND event: type={event.type.value}, node={node_id}, depth={depth}, timestamp={timestamp_str}"
+            )
             try:
-                await websocket.send_json(event.to_dict())
+                # Use send_text with explicit JSON to ensure proper flushing
+                # send_json may buffer in some FastAPI/Starlette versions
+                # Use jsonable_encoder to handle datetime and other non-serializable types
+                await websocket.send_text(json.dumps(jsonable_encoder(event.to_dict())))
                 logger.debug(f"✓ Event sent successfully: {event.type.value}")
             except Exception as e:
                 logger.error(f"✗ Failed to send event {event.type.value}: {e}")
@@ -83,7 +84,8 @@ class ConnectionManager:
         """Send JSON message to client."""
         if client_id in self.active_connections:
             websocket = self.active_connections[client_id]
-            await websocket.send_json(message)
+            # Use send_text with explicit JSON to ensure proper flushing
+            await websocket.send_text(json.dumps(jsonable_encoder(message)))
 
 
 @asynccontextmanager
@@ -100,16 +102,14 @@ async def lifespan(app: FastAPI):
     # Configure logging to both file and console
     # Use LOG_LEVEL env var (DEBUG, INFO, WARNING, ERROR) or default to INFO
     import os
+
     log_level_name = os.getenv("LOG_LEVEL", "INFO").upper()
     log_level = getattr(logging, log_level_name, logging.INFO)
 
     logging.basicConfig(
         level=log_level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.StreamHandler(),
-            logging.FileHandler(log_dir / "server.log")
-        ]
+        handlers=[logging.StreamHandler(), logging.FileHandler(log_dir / "server.log")],
     )
     logger.info("Starting sabre server...")
     yield
@@ -180,6 +180,7 @@ async def websocket_endpoint(websocket: WebSocket):
     """
     # Generate client ID (in production, use proper auth)
     import uuid
+
     client_id = str(uuid.uuid4())
 
     await manager.connect(websocket, client_id)
@@ -195,10 +196,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 logger.info(f"Processing user message: {user_message}")
 
                 if not user_message:
-                    await manager.send_message(client_id, {
-                        "type": "error",
-                        "content": "Empty message"
-                    })
+                    await manager.send_message(client_id, {"type": "error", "content": "Empty message"})
                     continue
 
                 # Create event callback to stream tokens and orchestration events
@@ -209,23 +207,20 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Process message
                 try:
                     session = manager.sessions[client_id]
-                    tree = session['tree']
+                    tree = session["tree"]
 
                     # Create execution node for this request
-                    node = tree.push(
-                        ExecutionNodeType.CLIENT_REQUEST,
-                        metadata={"message": user_message}
-                    )
+                    node = tree.push(ExecutionNodeType.CLIENT_REQUEST, metadata={"message": user_message})
 
                     # Create task for orchestration (so we can cancel it)
                     # Load instructions if creating new conversation
                     instructions = None
-                    if session['conversation_id'] is None:
+                    if session["conversation_id"] is None:
                         instructions = manager.orchestrator.load_default_instructions()
 
                     task = asyncio.create_task(
                         manager.orchestrator.run(
-                            conversation_id=session['conversation_id'],  # None for first message
+                            conversation_id=session["conversation_id"],  # None for first message
                             input_text=user_message,
                             tree=tree,
                             instructions=instructions,  # Required for new conversations
@@ -241,17 +236,17 @@ async def websocket_endpoint(websocket: WebSocket):
 
                         # Save conversation_id from orchestration result
                         if result.conversation_id:
-                            session['conversation_id'] = result.conversation_id
+                            session["conversation_id"] = result.conversation_id
 
                     except asyncio.CancelledError:
                         logger.info(f"Orchestration cancelled for client {client_id}")
                         # Send cancelled event
                         tree_context = {
-                            'node_id': node.id,
-                            'parent_id': node.parent_id,
-                            'depth': tree.get_depth(),
-                            'path': [n.id for n in tree.get_path()],
-                            'conversation_id': session['conversation_id'],
+                            "node_id": node.id,
+                            "parent_id": node.parent_id,
+                            "depth": tree.get_depth(),
+                            "path": [n.id for n in tree.get_path()],
+                            "conversation_id": session["conversation_id"],
                         }
                         await event_callback(CancelledEvent(**tree_context))
                         tree.pop(ExecutionStatus.ERROR)
@@ -276,35 +271,27 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     # Build tree context for error event
                     try:
-                        if 'tree' in locals() and 'node' in locals():
+                        if "tree" in locals() and "node" in locals():
                             tree.pop(ExecutionStatus.ERROR)
                             tree_context = {
-                                'node_id': node.id,
-                                'parent_id': node.parent_id,
-                                'depth': tree.get_depth(),
-                                'path': [n.id for n in tree.get_path()],
-                                'conversation_id': session.get('conversation_id', ''),
+                                "node_id": node.id,
+                                "parent_id": node.parent_id,
+                                "depth": tree.get_depth(),
+                                "path": [n.id for n in tree.get_path()],
+                                "conversation_id": session.get("conversation_id", ""),
                             }
                             # Send error event to client
-                            await event_callback(ErrorEvent(
-                                **tree_context,
-                                error_message=str(e),
-                                error_type=type(e).__name__
-                            ))
+                            await event_callback(
+                                ErrorEvent(**tree_context, error_message=str(e), error_type=type(e).__name__)
+                            )
                         else:
                             # Fallback: send simple error message
-                            await manager.send_message(client_id, {
-                                "type": "error",
-                                "content": str(e)
-                            })
+                            await manager.send_message(client_id, {"type": "error", "content": str(e)})
                     except Exception as error_handling_error:
                         logger.error(f"Error while handling error: {error_handling_error}")
                         # Last resort: try to send simple message
                         try:
-                            await manager.send_message(client_id, {
-                                "type": "error",
-                                "content": f"Error: {str(e)}"
-                            })
+                            await manager.send_message(client_id, {"type": "error", "content": f"Error: {str(e)}"})
                         except:
                             pass  # Give up if we can't send
 
@@ -315,7 +302,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Clear conversation by resetting conversation_id
                 logger.info(f"Clearing conversation for client {client_id}")
                 session = manager.sessions[client_id]
-                session['conversation_id'] = None
+                session["conversation_id"] = None
                 await manager.send_message(client_id, {"type": "conversation_cleared"})
 
             elif data.get("type") == "cancel":
@@ -342,25 +329,20 @@ if __name__ == "__main__":
     # Configure logging
     # Use LOG_LEVEL env var (DEBUG, INFO, WARNING, ERROR) or default to INFO
     import os
+
     log_level_name = os.getenv("LOG_LEVEL", "INFO").upper()
     log_level = getattr(logging, log_level_name, logging.INFO)
 
-    logging.basicConfig(
-        level=log_level,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
+    logging.basicConfig(level=log_level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
     # Configure uvicorn logging to match application format
     log_config = uvicorn.config.LOGGING_CONFIG
     log_config["formatters"]["default"]["fmt"] = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    log_config["formatters"]["access"]["fmt"] = '%(asctime)s - %(name)s - %(levelname)s - %(client_addr)s - "%(request_line)s" %(status_code)s'
+    log_config["formatters"]["access"]["fmt"] = (
+        '%(asctime)s - %(name)s - %(levelname)s - %(client_addr)s - "%(request_line)s" %(status_code)s'
+    )
 
     # Run server
     uvicorn.run(
-        "sabre.server.api.server:app",
-        host="0.0.0.0",
-        port=8011,
-        reload=True,
-        log_level="info",
-        log_config=log_config
+        "sabre.server.api.server:app", host="0.0.0.0", port=8011, reload=True, log_level="info", log_config=log_config
     )

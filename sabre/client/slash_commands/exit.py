@@ -1,4 +1,5 @@
 """Exit command - exits the client"""
+
 from .base import BaseCommand, CommandResult
 
 
@@ -18,7 +19,7 @@ class ExitCommand(BaseCommand):
         return CommandResult(
             success=True,
             message="exit",  # Special marker for client to exit
-            data={"action": "exit"}
+            data={"action": "exit"},
         )
 
 

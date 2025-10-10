@@ -14,6 +14,7 @@ from enum import Enum
 
 class ContentType(Enum):
     """Types of content that can be in a message"""
+
     TEXT = "text"
     IMAGE = "image"
     CODE = "code"
@@ -26,6 +27,7 @@ class Content:
 
     All content has a type and raw data.
     """
+
     type: ContentType
     data: Any
 
@@ -73,14 +75,7 @@ class ImageContent(Content):
         if not image_data and not file_id:
             raise ValueError("Must specify either image_data or file_id")
 
-        super().__init__(
-            type=ContentType.IMAGE,
-            data={
-                "image": image_data,
-                "mime_type": mime_type,
-                "file_id": file_id
-            }
-        )
+        super().__init__(type=ContentType.IMAGE, data={"image": image_data, "mime_type": mime_type, "file_id": file_id})
 
     @property
     def image_data(self) -> str:
@@ -105,10 +100,7 @@ class CodeContent(Content):
     """Code content with language"""
 
     def __init__(self, code: str, language: str = "python"):
-        super().__init__(
-            type=ContentType.CODE,
-            data={"code": code, "language": language}
-        )
+        super().__init__(type=ContentType.CODE, data={"code": code, "language": language})
 
     @property
     def code(self) -> str:
@@ -131,6 +123,7 @@ class Message:
     - role: "user", "assistant", or "system"
     - content: List of Content objects
     """
+
     role: str
     content: list[Content] = field(default_factory=list)
 
@@ -158,6 +151,7 @@ class Assistant(Message):
 
     Includes optional response_id for conversation continuation and token usage stats.
     """
+
     response_id: Optional[str] = None
     input_tokens: int = 0
     output_tokens: int = 0
@@ -169,7 +163,7 @@ class Assistant(Message):
         response_id: Optional[str] = None,
         input_tokens: int = 0,
         output_tokens: int = 0,
-        reasoning_tokens: int = 0
+        reasoning_tokens: int = 0,
     ):
         super().__init__(role="assistant", content=content or [])
         self.response_id = response_id
@@ -187,6 +181,7 @@ class System(Message):
 
 
 # Helper functions
+
 
 def text_message(role: str, text: str) -> Message:
     """Create a simple text message"""
