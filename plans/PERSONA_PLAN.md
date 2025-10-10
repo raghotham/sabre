@@ -1,4 +1,4 @@
-# LLMVM2 Persona System Architecture
+# Sabre - Persona System Architecture
 
 ## Problem Statement
 
