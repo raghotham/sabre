@@ -5,7 +5,7 @@ Run with: uv run pytest tests/test_python_runtime.py
 """
 
 from sabre.server.python_runtime import PythonRuntime
-from sabre.server.bash_helper import BashResult
+from sabre.server.helpers.bash import BashResult
 
 
 def test_simple_execution():
