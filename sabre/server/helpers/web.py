@@ -134,17 +134,42 @@ def download_csv(url: str) -> str:
         raise
 
 
-def download(urls_or_results: Any) -> str:
+def download(urls_or_results: Any, conversation_id: str = "default", max_urls: int = 10, max_total_size: int = 5 * 1024 * 1024) -> str:
     """
-    Download web content from URLs or search results.
+    Download web content from URLs or search results concurrently using Playwright.
+
+    Large content (>50KB) is written to disk and referenced by file path.
+    Uses concurrent downloads controlled by SABRE_WORKER_COUNT env var (default 3).
 
     Args:
         urls_or_results: URL string, list of URLs, or list of search result dicts
+        conversation_id: Conversation ID for file storage (from globals if available)
+        max_urls: Maximum number of URLs to download (default 10)
+        max_total_size: Maximum total size in bytes (default 5MB)
 
     Returns:
-        Combined content as string
+        Combined content as string (with file references for large content)
     """
+    import os
+    import hashlib
+    from concurrent.futures import ThreadPoolExecutor
+    from sabre.common.paths import get_files_dir
+
     logger.info(f"download() called with: {type(urls_or_results)}")
+
+    # Try to get conversation_id from Python globals if not provided
+    if conversation_id == "default":
+        try:
+            import builtins
+            conversation_id = getattr(builtins, '__sabre_conversation_id__', 'default')
+        except:
+            pass
+
+    # Get max concurrent workers from env (default reduced to 3 for browser-based downloads)
+    max_workers = int(os.getenv("SABRE_WORKER_COUNT", "3"))
+
+    # Size threshold for writing to disk (50KB)
+    MAX_INLINE_SIZE = 50 * 1024
 
     # Handle different input types
     urls = []
@@ -170,16 +195,75 @@ def download(urls_or_results: Any) -> str:
         print(error_msg)
         return error_msg
 
-    # Download all URLs and combine content
+    # Limit number of URLs
+    if len(urls) > max_urls:
+        logger.warning(f"Limiting download from {len(urls)} to {max_urls} URLs")
+        print(f"Note: Limiting download to first {max_urls} of {len(urls)} URLs")
+        urls = urls[:max_urls]
+
+    logger.info(f"Downloading {len(urls)} URL(s) with max_workers={max_workers}")
+
+    # Ensure files directory exists
+    files_dir = get_files_dir(conversation_id)
+    files_dir.mkdir(parents=True, exist_ok=True)
+
+    # Download all URLs concurrently using ThreadPoolExecutor
     results = []
-    for url in urls:
+    total_size = 0
+
+    def download_one(url: str) -> tuple[str, str, int]:
+        """Download single URL and return (url, content or file reference, size)"""
         try:
-            content = Web.get_url(url)
-            results.append(f"=== Content from {url} ===\n{content}\n")
+            # Use browser by default for better content rendering
+            # Auto-detection will fall back to HTTP for static content
+            content = Web.get_url(url, use_browser=None)
+
+            # If content is too large, write to disk
+            if len(content) > MAX_INLINE_SIZE:
+                # Generate unique filename from URL hash
+                url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
+                filename = f"download_{url_hash}.txt"
+                file_path = files_dir / filename
+
+                # Write to file
+                file_path.write_text(content, encoding='utf-8')
+
+                logger.info(f"Large content ({len(content)} bytes) written to {file_path}")
+
+                # Return file reference with preview
+                preview = content[:500] + "\n\n[...truncated...]\n\n" + content[-500:]
+                result = f"=== Content from {url} ===\n[Content too large ({len(content)} bytes), saved to file: {file_path}]\n\nPreview:\n{preview}\n"
+                return (url, result, len(content))
+            else:
+                return (url, f"=== Content from {url} ===\n{content}\n", len(content))
+
         except Exception as e:
             error_msg = f"ERROR: Failed to download {url}: {e}"
             logger.error(error_msg)
-            results.append(error_msg)
+            return (url, error_msg, 0)
+
+    # Use ThreadPoolExecutor for concurrent downloads
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all download tasks
+        futures = [executor.submit(download_one, url) for url in urls]
+
+        # Collect results in order, respecting total size limit
+        for future in futures:
+            url, content, size = future.result()
+
+            # Check if adding this content would exceed the limit
+            if total_size + size > max_total_size:
+                remaining = max_total_size - total_size
+                logger.warning(f"Reached download size limit ({max_total_size} bytes). Stopping.")
+                results.append(f"=== Download limit reached ===\nStopped at {len(results)}/{len(urls)} URLs. Total size: {total_size} bytes (limit: {max_total_size} bytes)")
+                break
+
+            results.append(content)
+            total_size += size
+
+    # Add summary
+    summary = f"\n\n=== Download Summary ===\nURLs downloaded: {len(results)}/{len(urls)}\nTotal size: {total_size:,} bytes"
+    results.append(summary)
 
     return "\n\n".join(results)
 
