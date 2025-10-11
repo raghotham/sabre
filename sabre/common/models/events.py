@@ -20,20 +20,11 @@ class EventType(Enum):
     RESPONSE_TOKEN = "response_token"
     RESPONSE_THINKING_TOKEN = "response_thinking_token"
     RESPONSE_TEXT = "response_text"
-    RESPONSE_END = "response_end"
     RESPONSE_RETRY = "response_retry"
 
     # Helpers events
     HELPERS_EXECUTION_START = "helpers_execution_start"
     HELPERS_EXECUTION_END = "helpers_execution_end"
-
-    # Nested LLM call events
-    NESTED_CALL_START = "nested_call_start"
-    NESTED_CALL_END = "nested_call_end"
-
-    # Tree events
-    NODE_CREATED = "node_created"
-    NODE_UPDATED = "node_updated"
 
     # Session events
     COMPLETE = "complete"
@@ -121,16 +112,12 @@ class Event:
             EventType.RESPONSE_TOKEN: ResponseTokenEvent,
             EventType.RESPONSE_THINKING_TOKEN: ResponseThinkingTokenEvent,
             EventType.RESPONSE_TEXT: ResponseTextEvent,
-            EventType.RESPONSE_END: ResponseEndEvent,
             EventType.RESPONSE_RETRY: ResponseRetryEvent,
             EventType.HELPERS_EXECUTION_START: HelpersExecutionStartEvent,
             EventType.HELPERS_EXECUTION_END: HelpersExecutionEndEvent,
-            EventType.NESTED_CALL_START: NestedCallStartEvent,
-            EventType.NESTED_CALL_END: NestedCallEndEvent,
-            EventType.NODE_CREATED: NodeCreatedEvent,
-            EventType.NODE_UPDATED: NodeUpdatedEvent,
             EventType.COMPLETE: CompleteEvent,
             EventType.ERROR: ErrorEvent,
+            EventType.CANCELLED: CancelledEvent,
         }
 
         event_class = event_classes.get(d["type"], Event)
@@ -268,41 +255,6 @@ class ResponseTextEvent(Event):
 
 
 @dataclass
-class ResponseEndEvent(Event):
-    """LLM response round completed"""
-
-    def __init__(
-        self,
-        node_id: str,
-        parent_id: Optional[str],
-        depth: int,
-        path: list[str],
-        conversation_id: str,
-        completion_tokens: int,
-        total_tokens: int,
-        response_id: Optional[str] = None,
-        stop_reason: str = "stop",
-        path_summary: str = "",
-    ):
-        super().__init__(
-            type=EventType.RESPONSE_END,
-            node_id=node_id,
-            parent_id=parent_id,
-            depth=depth,
-            path=path,
-            conversation_id=conversation_id,
-            timestamp=datetime.now(),
-            path_summary=path_summary,
-            data={
-                "completion_tokens": completion_tokens,
-                "total_tokens": total_tokens,
-                "response_id": response_id,
-                "stop_reason": stop_reason,
-            },
-        )
-
-
-@dataclass
 class ResponseRetryEvent(Event):
     """Rate limit hit, retrying after delay"""
 
@@ -396,130 +348,6 @@ class HelpersExecutionEndEvent(Event):
                 "success": success,
                 "result": result,  # Includes text output and image URLs
                 "block_number": block_number,
-            },
-        )
-
-
-@dataclass
-class NestedCallStartEvent(Event):
-    """Starting nested LLM call from helper"""
-
-    def __init__(
-        self,
-        node_id: str,
-        parent_id: Optional[str],
-        depth: int,
-        path: list[str],
-        conversation_id: str,
-        caller: str,
-        instruction: str,
-        path_summary: str = "",
-    ):
-        super().__init__(
-            type=EventType.NESTED_CALL_START,
-            node_id=node_id,
-            parent_id=parent_id,
-            depth=depth,
-            path=path,
-            conversation_id=conversation_id,
-            timestamp=datetime.now(),
-            path_summary=path_summary,
-            data={
-                "caller": caller,
-                "instruction": instruction,
-            },
-        )
-
-
-@dataclass
-class NestedCallEndEvent(Event):
-    """Finished nested LLM call"""
-
-    def __init__(
-        self,
-        node_id: str,
-        parent_id: Optional[str],
-        depth: int,
-        path: list[str],
-        conversation_id: str,
-        result: str,
-        duration_ms: float,
-        path_summary: str = "",
-    ):
-        super().__init__(
-            type=EventType.NESTED_CALL_END,
-            node_id=node_id,
-            parent_id=parent_id,
-            depth=depth,
-            path=path,
-            conversation_id=conversation_id,
-            timestamp=datetime.now(),
-            path_summary=path_summary,
-            data={
-                "result": result,
-                "duration_ms": duration_ms,
-            },
-        )
-
-
-@dataclass
-class NodeCreatedEvent(Event):
-    """Execution tree node created"""
-
-    def __init__(
-        self,
-        node_id: str,
-        parent_id: Optional[str],
-        depth: int,
-        path: list[str],
-        conversation_id: str,
-        node_type: str,
-        metadata: dict,
-        path_summary: str = "",
-    ):
-        super().__init__(
-            type=EventType.NODE_CREATED,
-            node_id=node_id,
-            parent_id=parent_id,
-            depth=depth,
-            path=path,
-            conversation_id=conversation_id,
-            timestamp=datetime.now(),
-            path_summary=path_summary,
-            data={
-                "node_type": node_type,
-                "metadata": metadata,
-            },
-        )
-
-
-@dataclass
-class NodeUpdatedEvent(Event):
-    """Execution tree node updated"""
-
-    def __init__(
-        self,
-        node_id: str,
-        parent_id: Optional[str],
-        depth: int,
-        path: list[str],
-        conversation_id: str,
-        status: str,
-        duration_ms: float,
-        path_summary: str = "",
-    ):
-        super().__init__(
-            type=EventType.NODE_UPDATED,
-            node_id=node_id,
-            parent_id=parent_id,
-            depth=depth,
-            path=path,
-            conversation_id=conversation_id,
-            timestamp=datetime.now(),
-            path_summary=path_summary,
-            data={
-                "status": status,
-                "duration_ms": duration_ms,
             },
         )
 
