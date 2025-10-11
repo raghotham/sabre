@@ -17,6 +17,7 @@ Organization:
 6. Utility methods
 """
 
+import asyncio
 import re
 import logging
 import time
@@ -32,9 +33,8 @@ from sabre.common import (
     EventType,
     ResponseStartEvent,
     ResponseTextEvent,
-    HelpersExtractedEvent,
-    HelpersStartEvent,
-    HelpersEndEvent,
+    HelpersExecutionStartEvent,
+    HelpersExecutionEndEvent,
     CompleteEvent,
     ErrorEvent,
     ExecutionTree,
@@ -350,6 +350,11 @@ class Orchestrator:
         # Call executor (streams back via streaming_token_handler)
         # NOTE: No image attachments - images only go to client, not back to LLM
         # Pass instructions on every call (they don't persist in Responses API)
+        if self.system_instructions:
+            logger.info(f"Passing instructions to executor ({len(self.system_instructions)} chars)")
+        else:
+            logger.warning("NO INSTRUCTIONS - self.system_instructions is None!")
+
         response = await self.executor.execute(
             conversation_id=conversation_id,
             input_text=input_text,
@@ -370,12 +375,19 @@ class Orchestrator:
         logger.info(f"Parsed response: {len(full_text)} chars, {len(helpers)} helpers")
         logger.info(f"Response text: {full_text[:500]}{'...' if len(full_text) > 500 else ''}")
 
-        # Emit response_text event with full response and token usage
+        # Emit response_text event with preview (not full text to reduce SSE payload)
+        # Send first 500 + last 500 chars for preview, full text only in complete event
         if event_callback:
+            # Create preview: first 500 + last 500 chars
+            if len(full_text) > 1000:
+                text_preview = full_text[:500] + "\n\n[...truncated...]\n\n" + full_text[-500:]
+            else:
+                text_preview = full_text
+
             await event_callback(
                 ResponseTextEvent(
                     **tree_context,
-                    text=full_text,
+                    text=text_preview,
                     text_length=len(full_text),
                     has_helpers=len(helpers) > 0,
                     helper_count=len(helpers),
@@ -384,6 +396,8 @@ class Orchestrator:
                     reasoning_tokens=response.reasoning_tokens,
                 )
             )
+            # Yield control to event loop so SSE generator can process queue
+            await asyncio.sleep(0)
 
         # NOTE: We DON'T emit helpers_extracted events here
         # They'll be emitted in _execute_helpers() right before each execution
@@ -445,19 +459,30 @@ class Orchestrator:
             parent_conv_id = parent_tree_context.get("conversation_id", "")
             helper_tree_context = self._build_tree_context(tree, helper_node, parent_conv_id)
 
-            # Emit helpers_extracted event BEFORE execution
-            # This shows the code block to the user at the right time
-            if event_callback:
-                await event_callback(HelpersExtractedEvent(**helper_tree_context, code=code, block_count=i + 1))
-
             # Emit start event
             if event_callback:
-                await event_callback(HelpersStartEvent(**helper_tree_context, code=code))
+                await event_callback(HelpersExecutionStartEvent(**helper_tree_context, code=code, block_number=i + 1))
+                # Yield control to event loop so SSE generator can process queue
+                await asyncio.sleep(0)
 
             # Execute code (may trigger recursive orchestrator.run via llm_call)
-            start_time = time.time()
-            result = self.runtime.execute(code)  # Synchronous exec()
-            duration_ms = (time.time() - start_time) * 1000
+            # Run in thread pool to avoid blocking event loop (which prevents SSE from streaming)
+            # Set conversation_id as builtin so helpers can access it
+            import builtins
+            old_conv_id = getattr(builtins, '__sabre_conversation_id__', None)
+            builtins.__sabre_conversation_id__ = helper_tree_context["conversation_id"]
+
+            try:
+                start_time = time.time()
+                # Run synchronous exec() in thread pool to avoid blocking event loop
+                result = await asyncio.to_thread(self.runtime.execute, code)
+                duration_ms = (time.time() - start_time) * 1000
+            finally:
+                # Restore old conversation_id
+                if old_conv_id is not None:
+                    builtins.__sabre_conversation_id__ = old_conv_id
+                else:
+                    delattr(builtins, '__sabre_conversation_id__')
 
             # Process result
             if result.success:
@@ -536,55 +561,56 @@ class Orchestrator:
                 logger.info(
                     f"Helper {i + 1} succeeded: {len(result.output)} chars, {len(result.content)} content items, {len(image_urls)} images saved"
                 )
+
+                # Emit execution end event with results for client display
+                if event_callback:
+                    # Build display content: TextContent with output + ImageContent with URLs (not base64)
+                    from sabre.common.models.messages import TextContent, ImageContent
+
+                    # Send preview of formatted output (first 500 + last 500 chars)
+                    if len(formatted_output) > 1000:
+                        output_preview = formatted_output[:500] + "\n\n[...truncated...]\n\n" + formatted_output[-500:]
+                    else:
+                        output_preview = formatted_output
+
+                    display_content = [TextContent(output_preview)]
+
+                    # Add image URLs as ImageContent (URL in image_data field, not base64)
+                    # Client will detect http:// URLs and render appropriately (wezterm imgcat or show URL)
+                    for url in image_urls:
+                        display_content.append(ImageContent(image_data=url))
+
+                    await event_callback(
+                        HelpersExecutionEndEvent(
+                            **helper_tree_context,
+                            duration_ms=duration_ms,
+                            success=True,
+                            result=display_content,
+                            block_number=i + 1,
+                        )
+                    )
+                    # Yield control to event loop so SSE generator can process queue
+                    await asyncio.sleep(0)
             else:
                 # On error, just text (no content)
-                results.append((f"ERROR: {result.error}", []))
+                error_text = f"ERROR: {result.error}"
+                results.append((error_text, []))
                 tree.pop(ExecutionStatus.ERROR)
                 logger.error(f"Helper {i + 1} failed: {result.error}")
 
-            # Emit end event
-            if event_callback:
-                # Filter: keep URL-based ImageContent and TextContent, exclude base64 ImageContent
-                from sabre.common.models.messages import TextContent, ImageContent
+                # Emit execution end event with error
+                if event_callback:
+                    from sabre.common.models.messages import TextContent
 
-                output_text, content_items = results[-1]
-
-                # Filter: exclude base64 images (they're huge), keep URL images
-                display_content = [
-                    item
-                    for item in content_items
-                    if not (
-                        isinstance(item, ImageContent) and item.image_data and not item.image_data.startswith("http")
+                    await event_callback(
+                        HelpersExecutionEndEvent(
+                            **helper_tree_context,
+                            duration_ms=duration_ms,
+                            success=False,
+                            result=[TextContent(error_text)],
+                            block_number=i + 1,
+                        )
                     )
-                ]
-
-                # Truncate output_text for WebSocket event (1MB frame limit)
-                # Keep full text in results for LLM continuation
-                MAX_DISPLAY_CHARS = 1000  # Show first 500 + last 500 chars
-                display_text = output_text
-                if len(output_text) > MAX_DISPLAY_CHARS:
-                    truncated_count = len(output_text) - MAX_DISPLAY_CHARS
-                    display_text = (
-                        output_text[:500]
-                        + f"\n\n[...truncated {truncated_count} characters...]\n\n"
-                        + output_text[-500:]
-                    )
-                    logger.info(
-                        f"Truncated helper result for event display: {len(output_text)} → {len(display_text)} chars"
-                    )
-
-                # Always include output_text as TextContent (contains markdown URLs for images)
-                event_result = [TextContent(display_text)] + display_content
-
-                await event_callback(
-                    HelpersEndEvent(
-                        **helper_tree_context,
-                        result=event_result,  # list[Content] with text (including markdown URLs) and filtered images
-                        duration_ms=duration_ms,
-                        block_number=i + 1,
-                        code_preview=code[:100],  # First 100 chars as preview
-                    )
-                )
 
         return results
 

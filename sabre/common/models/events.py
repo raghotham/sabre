@@ -24,9 +24,8 @@ class EventType(Enum):
     RESPONSE_RETRY = "response_retry"
 
     # Helpers events
-    HELPERS_EXTRACTED = "helpers_extracted"
-    HELPERS_START = "helpers_start"
-    HELPERS_END = "helpers_end"
+    HELPERS_EXECUTION_START = "helpers_execution_start"
+    HELPERS_EXECUTION_END = "helpers_execution_end"
 
     # Nested LLM call events
     NESTED_CALL_START = "nested_call_start"
@@ -124,9 +123,8 @@ class Event:
             EventType.RESPONSE_TEXT: ResponseTextEvent,
             EventType.RESPONSE_END: ResponseEndEvent,
             EventType.RESPONSE_RETRY: ResponseRetryEvent,
-            EventType.HELPERS_EXTRACTED: HelpersExtractedEvent,
-            EventType.HELPERS_START: HelpersStartEvent,
-            EventType.HELPERS_END: HelpersEndEvent,
+            EventType.HELPERS_EXECUTION_START: HelpersExecutionStartEvent,
+            EventType.HELPERS_EXECUTION_END: HelpersExecutionEndEvent,
             EventType.NESTED_CALL_START: NestedCallStartEvent,
             EventType.NESTED_CALL_END: NestedCallEndEvent,
             EventType.NODE_CREATED: NodeCreatedEvent,
@@ -340,38 +338,7 @@ class ResponseRetryEvent(Event):
 
 
 @dataclass
-class HelpersExtractedEvent(Event):
-    """<helpers> block extracted from response"""
-
-    def __init__(
-        self,
-        node_id: str,
-        parent_id: Optional[str],
-        depth: int,
-        path: list[str],
-        conversation_id: str,
-        code: str,
-        block_count: int,
-        path_summary: str = "",
-    ):
-        super().__init__(
-            type=EventType.HELPERS_EXTRACTED,
-            node_id=node_id,
-            parent_id=parent_id,
-            depth=depth,
-            path=path,
-            conversation_id=conversation_id,
-            timestamp=datetime.now(),
-            path_summary=path_summary,
-            data={
-                "code": code,
-                "block_count": block_count,
-            },
-        )
-
-
-@dataclass
-class HelpersStartEvent(Event):
+class HelpersExecutionStartEvent(Event):
     """Starting to execute <helpers> block"""
 
     def __init__(
@@ -382,10 +349,11 @@ class HelpersStartEvent(Event):
         path: list[str],
         conversation_id: str,
         code: str,
+        block_number: int = 1,
         path_summary: str = "",
     ):
         super().__init__(
-            type=EventType.HELPERS_START,
+            type=EventType.HELPERS_EXECUTION_START,
             node_id=node_id,
             parent_id=parent_id,
             depth=depth,
@@ -393,13 +361,13 @@ class HelpersStartEvent(Event):
             conversation_id=conversation_id,
             timestamp=datetime.now(),
             path_summary=path_summary,
-            data={"code": code},
+            data={"code": code, "block_number": block_number},
         )
 
 
 @dataclass
-class HelpersEndEvent(Event):
-    """Finished executing <helpers> block"""
+class HelpersExecutionEndEvent(Event):
+    """Helper execution finished with results"""
 
     def __init__(
         self,
@@ -408,14 +376,14 @@ class HelpersEndEvent(Event):
         depth: int,
         path: list[str],
         conversation_id: str,
-        result: list,  # list[Content] from sabre.common.models.messages
         duration_ms: float,
-        block_number: int = 0,
-        code_preview: str = "",
+        success: bool,
+        result: list,  # list[Content] from sabre.common.models.messages
+        block_number: int = 1,
         path_summary: str = "",
     ):
         super().__init__(
-            type=EventType.HELPERS_END,
+            type=EventType.HELPERS_EXECUTION_END,
             node_id=node_id,
             parent_id=parent_id,
             depth=depth,
@@ -424,10 +392,10 @@ class HelpersEndEvent(Event):
             timestamp=datetime.now(),
             path_summary=path_summary,
             data={
-                "result": result,  # Now a list of Content objects
                 "duration_ms": duration_ms,
+                "success": success,
+                "result": result,  # Includes text output and image URLs
                 "block_number": block_number,
-                "code_preview": code_preview,
             },
         )
 

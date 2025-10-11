@@ -59,6 +59,7 @@ class TUI:
         Detect terminal theme (light/dark) using multiple methods.
 
         Tries methods in order of reliability:
+        0. SABRE_THEME environment variable (manual override)
         1. OSC 11 query (actual background color)
         2. COLORFGBG environment variable
         3. iTerm2 profile name
@@ -68,6 +69,13 @@ class TUI:
         Returns:
             str: "light" or "dark"
         """
+        # Check for manual override first
+        sabre_theme = os.getenv("SABRE_THEME", "").lower()
+        if sabre_theme in ("light", "dark"):
+            self.detection_method = "SABRE_THEME env var"
+            logger.info(f"Using manual theme override: {sabre_theme}")
+            return sabre_theme
+
         # Try OSC 11 query first (most accurate)
         theme = self._query_background_color()
         if theme:
@@ -280,6 +288,17 @@ class TUI:
         print_formatted_text(HTML(text))
         sys.stdout.flush()
 
+    def print_thinking(self):
+        """Print thinking animation (stays on same line)."""
+        # Use ANSI color code for cyan
+        # Print without newline - stays on same line
+        print("\r\033[96mThinking...\033[0m", end="", flush=True)
+
+    def clear_thinking(self):
+        """Clear the thinking animation line."""
+        # Clear line and move cursor to beginning
+        print("\r\033[K", end="", flush=True)
+
     def html_escape(self, text: str) -> str:
         """Escape HTML/XML special characters for safe rendering."""
         return (
@@ -461,10 +480,10 @@ class TUI:
         # Pattern to match markdown images: ![alt text](url)
         image_pattern = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)", re.IGNORECASE)
 
-        # Process all result items
+        # Process all result items (Content objects)
         for content_obj in result:
-            content_type = content_obj.get("type", "text")
-            content_data = content_obj.get("data", "")
+            content_type = content_obj.type.value
+            content_data = content_obj.data
 
             if content_type == "text" and content_data.strip():
                 # Extract markdown images from text
