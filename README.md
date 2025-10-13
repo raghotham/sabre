@@ -12,35 +12,22 @@ Persona-driven AI agent with:
 ## Quick Start
 
 ```bash
-# Install dependencies
-uv sync
-
-# Run SABRE server
-uv run python -m sabre.server
-
-# Or use the CLI
+# Open up Terminal UI
 uv run sabre
+
+# Run as script
+uv run sabre "message"
 ```
 
 ## Commands
 
 ```bash
-# Server
-uv run python -m sabre.server
-uv run sabre-server
-
-# Client
-uv run python -m sabre.client
-uv run sabre-client
-
-# CLI (starts both server and client)
-uv run sabre
+uv run sabre "message
 ```
 
 ## Architecture
 
 - **`sabre/`** - Main package (persona-driven AI agent)
-- **`llmvm/`** - Legacy LLMVM implementation (for reference)
 - **`tests/`** - Test suite
 - **`plans/`** - Architecture and planning documents
 
