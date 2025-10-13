@@ -9,6 +9,7 @@ import select
 import termios
 import tty
 
+
 def test_osc11():
     """Test OSC 11 background color query."""
     if not sys.stdin.isatty() or not sys.stdout.isatty():
@@ -90,18 +91,20 @@ def test_osc11():
                 pass
             print(f"Error during query: {e}")
             import traceback
+
             traceback.print_exc()
     except Exception as e:
         print(f"Failed to set up terminal: {e}")
         import traceback
+
         traceback.print_exc()
 
 
 def test_other_methods():
     """Test other detection methods."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Other detection methods:")
-    print("="*60)
+    print("=" * 60)
 
     # COLORFGBG
     colorfgbg = os.getenv("COLORFGBG", "")
@@ -114,36 +117,34 @@ def test_other_methods():
                 print(f"  Background value: {bg}")
                 print(f"  Theme: {'light' if bg >= 8 else 'dark'}")
             except ValueError:
-                print(f"  Could not parse background value")
+                print("  Could not parse background value")
 
     # iTerm profile
     iterm_profile = os.getenv("ITERM_PROFILE", "")
     print(f"\niTERM_PROFILE: {iterm_profile if iterm_profile else 'not set'}")
     if iterm_profile:
         if "light" in iterm_profile.lower():
-            print(f"  Theme: light")
+            print("  Theme: light")
         elif "dark" in iterm_profile.lower():
-            print(f"  Theme: dark")
+            print("  Theme: dark")
         else:
-            print(f"  No theme hint in profile name")
+            print("  No theme hint in profile name")
 
     # macOS dark mode
     import subprocess
     import platform
+
     if platform.system() == "Darwin":
         try:
             result = subprocess.run(
-                ["defaults", "read", "-g", "AppleInterfaceStyle"],
-                capture_output=True,
-                text=True,
-                timeout=1
+                ["defaults", "read", "-g", "AppleInterfaceStyle"], capture_output=True, text=True, timeout=1
             )
             if result.returncode == 0:
                 print(f"\nmacOS AppleInterfaceStyle: {result.stdout.strip()}")
                 print(f"  Theme: {'dark' if 'dark' in result.stdout.lower() else 'light'}")
             else:
-                print(f"\nmacOS AppleInterfaceStyle: not set (light mode)")
-                print(f"  Theme: light")
+                print("\nmacOS AppleInterfaceStyle: not set (light mode)")
+                print("  Theme: light")
         except Exception as e:
             print(f"\nmacOS dark mode check failed: {e}")
 

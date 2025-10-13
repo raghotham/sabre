@@ -467,10 +467,15 @@ class Orchestrator:
 
             # Execute code (may trigger recursive orchestrator.run via llm_call)
             # Run in thread pool to avoid blocking event loop (which prevents SSE from streaming)
-            # Set conversation_id as builtin so helpers can access it
-            import builtins
-            old_conv_id = getattr(builtins, '__sabre_conversation_id__', None)
-            builtins.__sabre_conversation_id__ = helper_tree_context["conversation_id"]
+            # Set execution context for helpers (like coerce) to access
+            from sabre.common.execution_context import set_execution_context, clear_execution_context
+
+            set_execution_context(
+                event_callback=event_callback,
+                tree=tree,
+                tree_context=helper_tree_context,
+                conversation_id=helper_tree_context["conversation_id"],
+            )
 
             try:
                 start_time = time.time()
@@ -478,11 +483,8 @@ class Orchestrator:
                 result = await asyncio.to_thread(self.runtime.execute, code)
                 duration_ms = (time.time() - start_time) * 1000
             finally:
-                # Restore old conversation_id
-                if old_conv_id is not None:
-                    builtins.__sabre_conversation_id__ = old_conv_id
-                else:
-                    delattr(builtins, '__sabre_conversation_id__')
+                # Clear execution context (optional - contextvars auto-scopes to task)
+                clear_execution_context()
 
             # Process result
             if result.success:
@@ -527,7 +529,7 @@ class Orchestrator:
                 # Format result using result prompts (adds context wrapper)
                 # Images skip formatting - they go directly as markdown URLs
                 has_images = len(image_urls) > 0
-                formatted_output = self._format_result(result.output, has_images)
+                formatted_output, prompt_name_used = self._format_result(result.output, has_images)
 
                 # Build output text with image URLs for LLM
                 output_with_urls = formatted_output
@@ -539,9 +541,7 @@ class Orchestrator:
                 # If result is very large (>10KB), save to file and reference by file_id
                 MAX_INLINE_CHARS = 10000  # 10KB threshold
                 if len(output_with_urls) > MAX_INLINE_CHARS:
-                    logger.info(
-                        f"Result is large ({len(output_with_urls)} chars), saving to file for LLM reference"
-                    )
+                    logger.info(f"Result is large ({len(output_with_urls)} chars), saving to file for LLM reference")
                     # Save to file and upload to Files API
                     file_id = await self._save_large_result_to_file(
                         output_with_urls, helper_tree_context["conversation_id"], i + 1
@@ -614,7 +614,7 @@ class Orchestrator:
 
         return results
 
-    def _format_result(self, raw_output: str, has_images: bool) -> str:
+    def _format_result(self, raw_output: str, has_images: bool) -> tuple[str, str | None]:
         """
         Format helper result using appropriate *_result.prompt.
 
@@ -626,16 +626,18 @@ class Orchestrator:
             has_images: Whether result contains images
 
         Returns:
-            Formatted output text with context wrapper
+            Tuple of (formatted_output, prompt_name_used)
+            - formatted_output: Formatted output text with context wrapper
+            - prompt_name_used: Name of prompt used for formatting, or None if skipped
         """
         # Skip formatting for images - they go directly as markdown URLs
         if has_images:
             logger.debug("Skipping result formatting for image output")
-            return raw_output
+            return raw_output, None
 
         # Skip formatting for very short outputs (likely not useful to wrap)
         if len(raw_output.strip()) < 10:
-            return raw_output
+            return raw_output, None
 
         # Determine result type based on content
         from sabre.common.utils.prompt_loader import PromptLoader
@@ -660,12 +662,12 @@ class Orchestrator:
             # Return just the user_message part (as per old llmvm pattern)
             formatted = prompt["user_message"]
             logger.info(f"Result formatted: {len(raw_output)} → {len(formatted)} chars")
-            return formatted
+            return formatted, prompt_name
 
         except Exception as e:
             logger.warning(f"Failed to format result with {prompt_name}: {e}")
             # Fallback to raw output if formatting fails
-            return raw_output
+            return raw_output, None
 
     # ============================================================
     # TREE MANAGEMENT

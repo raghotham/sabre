@@ -5,6 +5,7 @@ Allows code to convert expressions to specific types using LLM understanding.
 """
 
 import logging
+import time
 from typing import Any, Union, Type, Callable
 
 from sabre.common.utils.prompt_loader import PromptLoader
@@ -66,6 +67,20 @@ class Coerce:
         Returns:
             Coerced value or original expression on failure
         """
+        # Get execution context (set by orchestrator during helper execution)
+        from sabre.common.execution_context import get_execution_context
+
+        ctx = get_execution_context()
+        if ctx:
+            event_callback = ctx.event_callback
+            tree = ctx.tree
+            parent_tree_context = ctx.tree_context
+        else:
+            # Fallback for direct calls outside orchestrator
+            event_callback = None
+            tree = None
+            parent_tree_context = {}
+
         # Load prompt
         prompt = PromptLoader.load(
             "coerce.prompt",
@@ -97,14 +112,44 @@ class Coerce:
         # Initial input with data
         input_text = f"### Value to coerce\n{str(expr)}"
 
-        from sabre.common import ExecutionTree, ExecutionNodeType, ExecutionStatus
+        from sabre.common import ExecutionNodeType, ExecutionStatus, NestedCallStartEvent, NestedCallEndEvent
 
         # Retry loop
         for attempt in range(max_retries):
             logger.info(f"coerce attempt {attempt + 1}/{max_retries}")
 
-            tree = ExecutionTree()
-            tree.push(ExecutionNodeType.NESTED_LLM_CALL, metadata={"helper": "coerce", "attempt": attempt + 1})
+            # Push tree node if tree is available
+            if tree:
+                node = tree.push(
+                    ExecutionNodeType.NESTED_LLM_CALL, metadata={"helper": "coerce", "attempt": attempt + 1}
+                )
+                # Build tree context from orchestrator's _build_tree_context logic
+                orchestrator = self.get_orchestrator()
+                tree_context = orchestrator._build_tree_context(
+                    tree, node, parent_tree_context.get("conversation_id", "")
+                )
+            else:
+                # Fallback if tree not available (shouldn't happen in normal execution)
+                tree_context = {
+                    "node_id": "coerce",
+                    "parent_id": None,
+                    "depth": 0,
+                    "path": [],
+                    "conversation_id": parent_tree_context.get("conversation_id", ""),
+                    "path_summary": "coerce()",
+                }
+
+            # Emit start event
+            if event_callback:
+                await event_callback(
+                    NestedCallStartEvent(
+                        **tree_context,
+                        caller="coerce",
+                        instruction=f"Convert '{str(expr)[:50]}' to {type_name}",
+                    )
+                )
+
+            start_time = time.time()
 
             try:
                 # Call LLM to perform coercion (pass instructions on every call)
@@ -120,7 +165,21 @@ class Coerce:
 
                 # Extract result from response
                 result_text = response.content.text.strip()
-                tree.pop(ExecutionStatus.COMPLETED)
+                duration_ms = (time.time() - start_time) * 1000
+
+                if tree:
+                    tree.pop(ExecutionStatus.COMPLETED)
+
+                # Emit end event
+                if event_callback:
+                    await event_callback(
+                        NestedCallEndEvent(
+                            **tree_context,
+                            result=result_text[:100],  # Truncate for event
+                            duration_ms=duration_ms,
+                            success=True,
+                        )
+                    )
 
                 # Try to parse as Python literal
                 import ast
@@ -132,8 +191,24 @@ class Coerce:
                     return result_text
 
             except Exception as e:
-                tree.pop(ExecutionStatus.ERROR)
+                duration_ms = (time.time() - start_time) * 1000
+
+                if tree:
+                    tree.pop(ExecutionStatus.ERROR)
+
                 logger.warning(f"coerce attempt {attempt + 1} failed: {e}")
+
+                # Emit end event with failure
+                if event_callback:
+                    await event_callback(
+                        NestedCallEndEvent(
+                            **tree_context,
+                            result=f"Error: {str(e)[:100]}",
+                            duration_ms=duration_ms,
+                            success=False,
+                        )
+                    )
+
                 if attempt >= max_retries - 1:
                     logger.error(f"coerce failed after {max_retries} attempts")
                     return expr  # Return original on failure
