@@ -134,44 +134,57 @@ def download_csv(url: str) -> str:
         raise
 
 
-def download(urls_or_results: Any, conversation_id: str = "default", max_urls: int = 10, max_total_size: int = 5 * 1024 * 1024) -> str:
+def download(urls_or_results: Any, max_urls: int = 10) -> list:
     """
-    Download web content from URLs or search results concurrently using Playwright.
+    Download web content as screenshots or files.
 
-    Large content (>50KB) is written to disk and referenced by file path.
-    Uses concurrent downloads controlled by SABRE_WORKER_COUNT env var (default 3).
+    Returns list of Content objects:
+    - Web pages → ImageContent (full page screenshot via Playwright)
+    - PDFs → TextContent (extracted text)
+    - CSVs → TextContent (file path to downloaded temp file)
+
+    This is the PRIMARY way to fetch web content. Screenshots allow the LLM
+    to see the page visually (layout, images, styling). Use llm_call() after
+    download() if you need to extract specific information from the content.
 
     Args:
         urls_or_results: URL string, list of URLs, or list of search result dicts
-        conversation_id: Conversation ID for file storage (from globals if available)
         max_urls: Maximum number of URLs to download (default 10)
-        max_total_size: Maximum total size in bytes (default 5MB)
 
     Returns:
-        Combined content as string (with file references for large content)
+        list[Content]: List of ImageContent (screenshots) or TextContent (files)
+
+    Examples:
+        # Download single URL
+        content = download("https://example.com")
+
+        # Download search results
+        results = Search.web_search("topic")
+        content = download(results[:3])
+
+        # Extract info with llm_call
+        pages = download(["https://example.com"])
+        info = llm_call(pages, "extract key facts")
+    """
+    from sabre.server.helpers.llm_call import run_async_from_sync
+
+    # Run async implementation
+    return run_async_from_sync(_download_async(urls_or_results, max_urls))
+
+
+async def _download_async(urls_or_results: Any, max_urls: int = 10) -> list:
+    """
+    Async implementation of download().
+
+    This is the actual implementation that handles async browser operations properly.
     """
     import os
-    import hashlib
-    from concurrent.futures import ThreadPoolExecutor
-    from sabre.common.paths import get_files_dir
+    import base64
+    from sabre.common.models.messages import Content, ImageContent, TextContent
 
     logger.info(f"download() called with: {type(urls_or_results)}")
 
-    # Try to get conversation_id from Python globals if not provided
-    if conversation_id == "default":
-        try:
-            import builtins
-            conversation_id = getattr(builtins, '__sabre_conversation_id__', 'default')
-        except:
-            pass
-
-    # Get max concurrent workers from env (default reduced to 3 for browser-based downloads)
-    max_workers = int(os.getenv("SABRE_WORKER_COUNT", "3"))
-
-    # Size threshold for writing to disk (50KB)
-    MAX_INLINE_SIZE = 50 * 1024
-
-    # Handle different input types
+    # Handle different input types - extract URLs
     urls = []
 
     if isinstance(urls_or_results, str):
@@ -193,7 +206,7 @@ def download(urls_or_results: Any, conversation_id: str = "default", max_urls: i
         error_msg = f"ERROR: Could not extract URLs from input: {urls_or_results}"
         logger.error(error_msg)
         print(error_msg)
-        return error_msg
+        return [TextContent(error_msg)]
 
     # Limit number of URLs
     if len(urls) > max_urls:
@@ -201,71 +214,93 @@ def download(urls_or_results: Any, conversation_id: str = "default", max_urls: i
         print(f"Note: Limiting download to first {max_urls} of {len(urls)} URLs")
         urls = urls[:max_urls]
 
-    logger.info(f"Downloading {len(urls)} URL(s) with max_workers={max_workers}")
+    logger.info(f"Downloading {len(urls)} URL(s) as screenshots/files")
 
-    # Ensure files directory exists
-    files_dir = get_files_dir(conversation_id)
-    files_dir.mkdir(parents=True, exist_ok=True)
-
-    # Download all URLs concurrently using ThreadPoolExecutor
-    results = []
-    total_size = 0
-
-    def download_one(url: str) -> tuple[str, str, int]:
-        """Download single URL and return (url, content or file reference, size)"""
+    # Download all URLs concurrently using asyncio.gather
+    async def download_one(url: str) -> Content:
+        """Download single URL and return Content object"""
         try:
-            # Use browser by default for better content rendering
-            # Auto-detection will fall back to HTTP for static content
-            content = Web.get_url(url, use_browser=None)
+            url_lower = url.lower()
 
-            # If content is too large, write to disk
-            if len(content) > MAX_INLINE_SIZE:
-                # Generate unique filename from URL hash
-                url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
-                filename = f"download_{url_hash}.txt"
-                file_path = files_dir / filename
+            # Handle PDFs
+            if url_lower.endswith(".pdf") or "pdf" in url_lower:
+                logger.info(f"Downloading PDF: {url}")
+                # Use simple HTTP for PDFs (run in thread to avoid blocking)
+                import requests
 
-                # Write to file
-                file_path.write_text(content, encoding='utf-8')
+                def _download_pdf():
+                    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+                    response = requests.get(url, timeout=30, headers=headers)
+                    response.raise_for_status()
 
-                logger.info(f"Large content ({len(content)} bytes) written to {file_path}")
+                    # Extract text from PDF
+                    import PyPDF2
+                    import io
 
-                # Return file reference with preview
-                preview = content[:500] + "\n\n[...truncated...]\n\n" + content[-500:]
-                result = f"=== Content from {url} ===\n[Content too large ({len(content)} bytes), saved to file: {file_path}]\n\nPreview:\n{preview}\n"
-                return (url, result, len(content))
+                    pdf_bytes = io.BytesIO(response.content)
+                    pdf_reader = PyPDF2.PdfReader(pdf_bytes)
+
+                    text_parts = [f"=== PDF: {url} ==="]
+                    for page_num, page in enumerate(pdf_reader.pages, 1):
+                        text = page.extract_text()
+                        if text.strip():
+                            text_parts.append(f"--- Page {page_num} ---\n{text}")
+
+                    full_text = "\n\n".join(text_parts)
+                    logger.info(f"Extracted PDF text: {len(full_text)} chars from {len(pdf_reader.pages)} pages")
+                    print(f"Downloaded PDF: {url} ({len(pdf_reader.pages)} pages)")
+
+                    return TextContent(full_text)
+
+                # Run blocking PDF download in thread
+                return await asyncio.to_thread(_download_pdf)
+
+            # Handle CSVs
+            elif url_lower.endswith(".csv") or "csv" in url_lower:
+                logger.info(f"Downloading CSV: {url}")
+
+                def _download_csv_wrapper():
+                    csv_path = download_csv(url)
+                    logger.info(f"Downloaded CSV to: {csv_path}")
+                    print(f"Downloaded CSV: {url} -> {csv_path}")
+                    return TextContent(f"CSV file downloaded to: {csv_path}\nUse pd.read_csv('{csv_path}') to load it.")
+
+                # Run blocking CSV download in thread
+                return await asyncio.to_thread(_download_csv_wrapper)
+
+            # Handle web pages - take screenshot
             else:
-                return (url, f"=== Content from {url} ===\n{content}\n", len(content))
+                logger.info(f"Taking screenshot: {url}")
+                # Get browser instance and take screenshot (properly async)
+                browser = await _get_browser()
+                screenshot_bytes = await browser.screenshot(url)
+
+                # Convert to base64
+                screenshot_b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
+
+                logger.info(f"Screenshot captured: {len(screenshot_bytes)} bytes")
+                print(f"Downloaded (screenshot): {url}")
+
+                return ImageContent(image_data=screenshot_b64, mime_type="image/png")
 
         except Exception as e:
             error_msg = f"ERROR: Failed to download {url}: {e}"
             logger.error(error_msg)
-            return (url, error_msg, 0)
+            print(error_msg)
+            return TextContent(error_msg)
 
-    # Use ThreadPoolExecutor for concurrent downloads
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all download tasks
-        futures = [executor.submit(download_one, url) for url in urls]
+    # Use asyncio.gather for concurrent downloads
+    results = await asyncio.gather(*[download_one(url) for url in urls])
 
-        # Collect results in order, respecting total size limit
-        for future in futures:
-            url, content, size = future.result()
+    logger.info(f"Downloaded {len(results)} items")
+    return list(results)
 
-            # Check if adding this content would exceed the limit
-            if total_size + size > max_total_size:
-                remaining = max_total_size - total_size
-                logger.warning(f"Reached download size limit ({max_total_size} bytes). Stopping.")
-                results.append(f"=== Download limit reached ===\nStopped at {len(results)}/{len(urls)} URLs. Total size: {total_size} bytes (limit: {max_total_size} bytes)")
-                break
 
-            results.append(content)
-            total_size += size
-
-    # Add summary
-    summary = f"\n\n=== Download Summary ===\nURLs downloaded: {len(results)}/{len(urls)}\nTotal size: {total_size:,} bytes"
-    results.append(summary)
-
-    return "\n\n".join(results)
+# =============================================================================
+# UNUSED HELPERS - Text-based web fetching (kept for future use)
+# =============================================================================
+# The functions below convert web content to text/markdown instead of screenshots.
+# They are not currently registered or used, but kept for potential future needs.
 
 
 def _should_use_browser(url: str) -> bool:
