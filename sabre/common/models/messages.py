@@ -18,6 +18,8 @@ class ContentType(Enum):
     TEXT = "text"
     IMAGE = "image"
     CODE = "code"
+    PDF = "pdf"
+    FILE = "file"
 
 
 @dataclass
@@ -112,6 +114,56 @@ class CodeContent(Content):
 
     def get_str(self) -> str:
         return self.code
+
+
+@dataclass
+class PdfContent(Content):
+    """PDF document content."""
+
+    def __init__(self, pdf_data: bytes, url: str = ""):
+        super().__init__(type=ContentType.PDF, data={"pdf_data": pdf_data, "url": url})
+
+    @property
+    def pdf_data(self) -> bytes:
+        return self.data["pdf_data"]
+
+    @property
+    def url(self) -> str:
+        return self.data.get("url", "")
+
+    def get_str(self) -> str:
+        """Extract text from PDF or return summary."""
+        # TODO: Implement PDF text extraction using PyPDF2 or similar
+        size = len(self.pdf_data)
+        url_info = f", url={self.url}" if self.url else ""
+        return f"[PDF document: {size} bytes{url_info}]"
+
+
+@dataclass
+class FileContent(Content):
+    """Generic file content (binary)."""
+
+    def __init__(self, file_data: bytes, url: str = "", filename: str = ""):
+        super().__init__(type=ContentType.FILE, data={"file_data": file_data, "url": url, "filename": filename})
+
+    @property
+    def file_data(self) -> bytes:
+        return self.data["file_data"]
+
+    @property
+    def url(self) -> str:
+        return self.data.get("url", "")
+
+    @property
+    def filename(self) -> str:
+        return self.data.get("filename", "")
+
+    def get_str(self) -> str:
+        """Return file info."""
+        size = len(self.file_data)
+        name_info = f"{self.filename}, " if self.filename else ""
+        url_info = f", url={self.url}" if self.url else ""
+        return f"[File: {name_info}{size} bytes{url_info}]"
 
 
 @dataclass
