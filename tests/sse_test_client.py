@@ -22,7 +22,7 @@ async def test_sse_client():
                 print(f"[CLIENT] Error: Status {response.status_code}")
                 return
 
-            print(f"[CLIENT] Connected, waiting for events...")
+            print("[CLIENT] Connected, waiting for events...")
 
             # Read SSE stream line by line
             async for line in response.aiter_lines():

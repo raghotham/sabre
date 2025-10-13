@@ -17,28 +17,28 @@ def main():
     detected_theme = term_info["detected_theme"]
 
     # Show terminal detection info
-    print('Terminal Detection:')
-    print(f'  Terminal: {term_info["term_program"]}')
-    print(f'  TERM: {term_info["term"]}')
-    print(f'  Size: {term_info["size"].columns}x{term_info["size"].lines}')
-    print(f'  COLORFGBG: {term_info["colorfgbg"]}')
-    print(f'  iTerm Profile: {term_info["iterm_profile"]}')
-    print(f'  Detected theme: {detected_theme}')
-    print(f'  Detection method: {term_info["detection_method"]}')
+    print("Terminal Detection:")
+    print(f"  Terminal: {term_info['term_program']}")
+    print(f"  TERM: {term_info['term']}")
+    print(f"  Size: {term_info['size'].columns}x{term_info['size'].lines}")
+    print(f"  COLORFGBG: {term_info['colorfgbg']}")
+    print(f"  iTerm Profile: {term_info['iterm_profile']}")
+    print(f"  Detected theme: {detected_theme}")
+    print(f"  Detection method: {term_info['detection_method']}")
     print()
-    print(f'═══ {detected_theme.upper()} MODE ═══')
+    print(f"═══ {detected_theme.upper()} MODE ═══")
     print()
 
     # Show color assignments
-    print('Current Color Assignments:')
+    print("Current Color Assignments:")
     for name, color in tui.colors.items():
         if name == "pygments_style":
             continue
-        print(f'  {name}: {color}')
+        print(f"  {name}: {color}")
     print()
 
     # First exchange - simple question
-    print('Example Conversation:')
+    print("Example Conversation:")
     print()
 
     # User input
@@ -161,7 +161,7 @@ with matplotlib_to_image(figsize=(6, 6), dpi=130):
 
     # Show error and warning examples
     print()
-    print('Error and Warning Examples:')
+    print("Error and Warning Examples:")
     print()
 
     # ERROR
