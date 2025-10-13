@@ -135,15 +135,27 @@ async def health():
 
 @app.get("/files/{conversation_id}/{filename}")
 async def serve_file(conversation_id: str, filename: str):
-    """Serve files generated during conversation (e.g., matplotlib images)."""
+    """
+    Serve files generated during conversation (e.g., matplotlib images, saved data).
+
+    Security:
+    - Only serves files from conversation directories
+    - Validates filename is basename only (no path traversal)
+    - Returns 404 for non-existent files
+    """
     from sabre.common.paths import get_files_dir
+    from fastapi import HTTPException
+
+    # Security: basename only (prevent path traversal)
+    if os.path.basename(filename) != filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
 
     # Files are stored in XDG_DATA_HOME/sabre/files/{conversation_id}/
     files_dir = get_files_dir(conversation_id)
     file_path = files_dir / filename
 
-    if not file_path.exists():
-        return {"detail": "Not Found"}, 404
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
 
     return FileResponse(file_path)
 
