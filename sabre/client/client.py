@@ -188,7 +188,9 @@ class Client:
             ) as response:
                 if response.status_code != 200:
                     error_text = await response.aread()
-                    self.tui.print(f'<style fg="ansired">Server error ({response.status_code}):</style> {error_text.decode()}')
+                    self.tui.print(
+                        f'<style fg="ansired">Server error ({response.status_code}):</style> {error_text.decode()}'
+                    )
                     return
 
                 # Reset state for new response
@@ -223,6 +225,7 @@ class Client:
 
                     # Log event with timestamp and details
                     import datetime
+
                     timestamp_str = datetime.datetime.now().isoformat()
                     event_type = event.type.value if hasattr(event, "type") else type(event).__name__
                     node_id = event.node_id[:8] if hasattr(event, "node_id") and event.node_id else "N/A"
@@ -259,7 +262,9 @@ class Client:
                     elif isinstance(event, HelpersExecutionStartEvent):
                         block_number = event.data["block_number"]
                         logger.info(f"  └─ EXECUTING helper #{block_number}")
-                        self.tui.print_tree_node("EXECUTING", f"helper #{block_number}...", depth=event.depth, path=event.path)
+                        self.tui.print_tree_node(
+                            "EXECUTING", f"helper #{block_number}...", depth=event.depth, path=event.path
+                        )
 
                     elif isinstance(event, HelpersExecutionEndEvent):
                         duration_ms = event.data["duration_ms"]
@@ -271,7 +276,7 @@ class Client:
                         logger.info(f"  └─ RESULT helper #{block_number} {status} {duration_ms:.0f}ms")
                         color = self.tui.colors["complete"] if success else self.tui.colors["error"]
                         self.tui.print_tree_node(
-                            f"RESULT",
+                            "RESULT",
                             f'helper #{block_number} <style fg="{color}">{status} {duration_ms:.0f}ms</style>',
                             depth=event.depth,
                             path=event.path,
@@ -292,11 +297,15 @@ class Client:
                         reasoning_tokens = event.data.get("reasoning_tokens", 0)
                         token_info = ""
                         if input_tokens > 0:
-                            token_info = f" • Tokens: {input_tokens} in, {output_tokens} out, {reasoning_tokens} reasoning"
+                            token_info = (
+                                f" • Tokens: {input_tokens} in, {output_tokens} out, {reasoning_tokens} reasoning"
+                            )
 
                         # Log response details
                         if has_helpers:
-                            logger.info(f"  └─ RESPONSE_TEXT: {text_length} chars, {helper_count} helper(s){token_info}")
+                            logger.info(
+                                f"  └─ RESPONSE_TEXT: {text_length} chars, {helper_count} helper(s){token_info}"
+                            )
                         else:
                             logger.info(f"  └─ RESPONSE_TEXT: {text_length} chars, no helpers{token_info}")
 
@@ -320,16 +329,16 @@ class Client:
                         import re
 
                         # Extract <helpers> blocks and display them
-                        helpers_pattern = r'<helpers>(.*?)</helpers>'
+                        helpers_pattern = r"<helpers>(.*?)</helpers>"
                         helpers_blocks = re.findall(helpers_pattern, full_text, re.DOTALL)
 
                         # Extract <helpers_result> blocks
-                        results_pattern = r'<helpers_result>(.*?)</helpers_result>'
+                        results_pattern = r"<helpers_result>(.*?)</helpers_result>"
                         results_blocks = re.findall(results_pattern, full_text, re.DOTALL)
 
                         # Remove <helpers> and <helpers_result> blocks from text for display
-                        display_text = re.sub(helpers_pattern, '', full_text, flags=re.DOTALL)
-                        display_text = re.sub(results_pattern, '', display_text, flags=re.DOTALL)
+                        display_text = re.sub(helpers_pattern, "", full_text, flags=re.DOTALL)
+                        display_text = re.sub(results_pattern, "", display_text, flags=re.DOTALL)
 
                         # Display the response text (without helpers/results blocks)
                         if display_text.strip():
@@ -337,7 +346,9 @@ class Client:
 
                         # Display extracted <helpers> blocks as code
                         for i, code in enumerate(helpers_blocks):
-                            self.tui.print_tree_node("HELPER_BLOCK", f"#{i + 1}", depth=event.depth + 1, path=event.path)
+                            self.tui.print_tree_node(
+                                "HELPER_BLOCK", f"#{i + 1}", depth=event.depth + 1, path=event.path
+                            )
                             if code.strip():
                                 self.tui.print_code_block(code.strip(), event.depth + 1)
 
@@ -351,6 +362,7 @@ class Client:
                             )
                             # Render result (contains text and markdown image URLs)
                             from sabre.common.models.messages import TextContent
+
                             result_content = [TextContent(result.strip())]
                             self.tui.render_helpers_end({"result": result_content}, event.depth + 1)
 
@@ -381,7 +393,10 @@ class Client:
                         error_msg = event.data["error_message"]
                         error_color = self.tui.colors["error"]
                         self.tui.print_tree_node(
-                            "ERROR", f'<style fg="{error_color}">{error_msg}</style>', depth=event.depth, path=event.path
+                            "ERROR",
+                            f'<style fg="{error_color}">{error_msg}</style>',
+                            depth=event.depth,
+                            path=event.path,
                         )
                         self.processing = False
                         break
@@ -391,7 +406,7 @@ class Client:
                     self.tui.clear_thinking()
                     thinking_shown = False
 
-        except httpx.ConnectError as e:
+        except httpx.ConnectError:
             # Clear thinking animation on connection error
             if thinking_shown:
                 self.tui.clear_thinking()
@@ -441,9 +456,7 @@ class Client:
         try:
             # Create HTTP client (no persistent connection needed for SSE)
             async with httpx.AsyncClient() as client:
-                self.tui.print(
-                    "<style fg=\"ansigreen\">Ready!</style> Type your message (Ctrl+D or 'exit' to quit)"
-                )
+                self.tui.print("<style fg=\"ansigreen\">Ready!</style> Type your message (Ctrl+D or 'exit' to quit)")
                 self.tui.print('<style fg="ansibrightblack">Press Esc to cancel execution</style>\n')
 
                 while True:
@@ -477,9 +490,7 @@ class Client:
                                     self.tui.print(f'\n<style fg="ansicyan">{result.message}</style>')
                                 # Clear conversation_id locally
                                 self.conversation_id = None
-                                self.tui.print(
-                                    '<style fg="ansigreen">Conversation cleared. Starting fresh.</style>\n'
-                                )
+                                self.tui.print('<style fg="ansigreen">Conversation cleared. Starting fresh.</style>\n')
                                 continue
                             elif result.data and result.data.get("action") == "request_helpers":
                                 # Special case: request helpers from server

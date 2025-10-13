@@ -266,9 +266,7 @@ async def message_endpoint(request: Request):
                         "conversation_id": conversation_id or "",
                     }
                     # Send error event to client
-                    await event_callback(
-                        ErrorEvent(**tree_context, error_message=str(e), error_type=type(e).__name__)
-                    )
+                    await event_callback(ErrorEvent(**tree_context, error_message=str(e), error_type=type(e).__name__))
                     raise
                 finally:
                     # Signal completion
@@ -326,7 +324,9 @@ async def message_endpoint(request: Request):
 
                     yield_time = (time.time() - yield_start) * 1000
                     timestamp_after = datetime.datetime.now().isoformat()
-                    logger.info(f"✅ [{timestamp_after}] YIELDED: {event_type} (node={node_id}, depth={depth}, yield={yield_time:.1f}ms)")
+                    logger.info(
+                        f"✅ [{timestamp_after}] YIELDED: {event_type} (node={node_id}, depth={depth}, yield={yield_time:.1f}ms)"
+                    )
 
                     last_keepalive = asyncio.get_event_loop().time()
 
@@ -359,7 +359,7 @@ async def message_endpoint(request: Request):
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",  # Disable nginx buffering
             "Connection": "keep-alive",
-        }
+        },
     )
 
 

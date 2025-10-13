@@ -26,6 +26,10 @@ class EventType(Enum):
     HELPERS_EXECUTION_START = "helpers_execution_start"
     HELPERS_EXECUTION_END = "helpers_execution_end"
 
+    # Nested LLM call events (for coerce, etc.)
+    NESTED_CALL_START = "nested_call_start"
+    NESTED_CALL_END = "nested_call_end"
+
     # Session events
     COMPLETE = "complete"
     ERROR = "error"
@@ -115,6 +119,8 @@ class Event:
             EventType.RESPONSE_RETRY: ResponseRetryEvent,
             EventType.HELPERS_EXECUTION_START: HelpersExecutionStartEvent,
             EventType.HELPERS_EXECUTION_END: HelpersExecutionEndEvent,
+            EventType.NESTED_CALL_START: NestedCallStartEvent,
+            EventType.NESTED_CALL_END: NestedCallEndEvent,
             EventType.COMPLETE: CompleteEvent,
             EventType.ERROR: ErrorEvent,
             EventType.CANCELLED: CancelledEvent,
@@ -348,6 +354,70 @@ class HelpersExecutionEndEvent(Event):
                 "success": success,
                 "result": result,  # Includes text output and image URLs
                 "block_number": block_number,
+            },
+        )
+
+
+@dataclass
+class NestedCallStartEvent(Event):
+    """Starting nested LLM call (e.g., from coerce)"""
+
+    def __init__(
+        self,
+        node_id: str,
+        parent_id: Optional[str],
+        depth: int,
+        path: list[str],
+        conversation_id: str,
+        caller: str,
+        instruction: str,
+        path_summary: str = "",
+    ):
+        super().__init__(
+            type=EventType.NESTED_CALL_START,
+            node_id=node_id,
+            parent_id=parent_id,
+            depth=depth,
+            path=path,
+            conversation_id=conversation_id,
+            timestamp=datetime.now(),
+            path_summary=path_summary,
+            data={
+                "caller": caller,
+                "instruction": instruction,
+            },
+        )
+
+
+@dataclass
+class NestedCallEndEvent(Event):
+    """Finished nested LLM call"""
+
+    def __init__(
+        self,
+        node_id: str,
+        parent_id: Optional[str],
+        depth: int,
+        path: list[str],
+        conversation_id: str,
+        result: str,
+        duration_ms: float,
+        success: bool = True,
+        path_summary: str = "",
+    ):
+        super().__init__(
+            type=EventType.NESTED_CALL_END,
+            node_id=node_id,
+            parent_id=parent_id,
+            depth=depth,
+            path=path,
+            conversation_id=conversation_id,
+            timestamp=datetime.now(),
+            path_summary=path_summary,
+            data={
+                "result": result,
+                "duration_ms": duration_ms,
+                "success": success,
             },
         )
 
