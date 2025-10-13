@@ -104,6 +104,18 @@ class LLMCall:
         Returns:
             LLM response text
         """
+        # Get execution context (set by orchestrator during helper execution)
+        from sabre.common.execution_context import get_execution_context
+
+        ctx = get_execution_context()
+        if ctx:
+            event_callback = ctx.event_callback
+            tree = ctx.tree
+        else:
+            # Fallback for direct calls outside orchestrator
+            event_callback = None
+            tree = None
+
         # Step 1: Load llm_call.prompt
         prompt = PromptLoader.load(
             "llm_call.prompt",
@@ -138,27 +150,52 @@ class LLMCall:
         # Input is just the context
         input_text = context_text
 
-        # Step 3: Create nested execution tree
+        # Step 3: Use existing tree or create nested execution tree
         from sabre.common import ExecutionTree, ExecutionNodeType, ExecutionStatus
 
-        nested_tree = ExecutionTree()
-        nested_tree.push(
+        # Use tree from context if available, otherwise create new one
+        if tree is None:
+            tree = ExecutionTree()
+
+        tree.push(
             ExecutionNodeType.NESTED_LLM_CALL,
-            metadata={"instructions_preview": instructions[:200], "context_count": len(expr_list)},
+            metadata={
+                "helper": "llm_call",
+                "instructions_preview": instructions[:200],
+                "context_count": len(expr_list),
+            },
         )
 
-        # Step 4: RECURSIVE CALL to orchestrator (will create conversation with instructions)
+        # Step 4: Create NEW orchestrator instance for nested call
+        # (avoids interfering with parent orchestrator's state)
         try:
-            orchestrator = self.get_orchestrator()
+            from sabre.server.orchestrator import Orchestrator
+            from sabre.server.python_runtime import PythonRuntime
+            from sabre.common.executors.response import ResponseExecutor
+
+            # Get OpenAI client to create executor
+            client = self.get_openai_client()
+
+            # Create new executor, runtime, and orchestrator for this nested call
+            executor = ResponseExecutor(client=client, model="gpt-4o")
+            runtime = PythonRuntime()
+            orchestrator = Orchestrator(executor=executor, python_runtime=runtime, max_iterations=10)
+
+            # Connect runtime to orchestrator (for recursive llm_call support)
+            runtime.set_orchestrator(orchestrator)
+
+            logger.info("Created new orchestrator instance for nested llm_call")
+
+            # RECURSIVE CALL with new orchestrator instance
             result = await orchestrator.run(
                 conversation_id=None,  # Create new conversation
                 input_text=input_text,
-                tree=nested_tree,
+                tree=tree,
                 instructions=system_instructions,  # Pass our loaded instructions
-                event_callback=None,  # No client events for nested calls
+                event_callback=event_callback,  # Pass through event callback for client visibility
             )
 
-            nested_tree.pop(ExecutionStatus.COMPLETED)
+            tree.pop(ExecutionStatus.COMPLETED)
 
             if not result.success:
                 logger.error(f"Nested LLM call failed: {result.error}")
@@ -168,6 +205,6 @@ class LLMCall:
             return result.final_response
 
         except Exception as e:
-            nested_tree.pop(ExecutionStatus.ERROR)
+            tree.pop(ExecutionStatus.ERROR)
             logger.error(f"Exception in nested LLM call: {e}")
             return f"ERROR: {type(e).__name__}: {str(e)}"
