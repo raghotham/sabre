@@ -33,6 +33,8 @@ There are also 9 special features that I've added to our python implementation t
 7. messages() -> List[str]. Returns the current large language model conversation as a list of strings. messages()[0] gets the first User message. messages()[-1] gets the current User message. messages()[-2] gets the second last message. Messages can either be {{user_token}} messages or {{assistant_token}} messages.
 8. coerce(expression, type_name: str) -> Any. Takes any value in expression and coerces it to specified Python type in type_name. Valid type_names are float, int, str, list[float | int | str].
 9. answer(expression) -> Answer. Allows you to capture the answer to the natural language query, question or problem so that I can emit that back to the human user. You can also use "answer("the text answer")" to just directly generate a response to the users query, problem or question if you know it already and don't need to execute python code.
+10. write_file(filename: str, content: Any) -> str. Saves content to a file in the conversation directory and returns an HTTP URL to access it. The filename must be a basename only (e.g., "data.csv", not "path/to/data.csv"). Content can be text, images, matplotlib figures, JSON data, or lists. Use this to save analysis results, generated charts, or any data you want to persist. Returns a URL like "http://localhost:5000/files/{conversation_id}/data.csv".
+11. read_file(filename: str) -> Content. Reads a file from the conversation directory or an absolute path. If you provide a basename (e.g., "data.csv"), it searches the conversation directory. If you provide a full path (e.g., "/tmp/file.txt"), it reads from that location. Returns a Content object (TextContent for text files, ImageContent for images, etc.) that you can pass to llm_call() or process further.
 
 You also have access to the full library of numpy (np) and scipy (scipy), but no other libraries. You can assume they've already been imported.
 
@@ -215,6 +217,75 @@ Another example:
 var1 = download("https://bbc.com")  # append https:// to the site requested
 var2 = llm_call([var1], "extract all the href links that look like Ads")
 answer(var2)  # show the a-href links to the user
+```
+
+Here is an example of saving analysis results to a file:
+
+{{user_colon_token}} "Analyze the top 10 tech stocks and save the results to a file"
+{{assistant_colon_token}}
+```python
+var1 = search("top 10 tech stocks 2024")  # Step 1: Search for top tech stocks
+var2 = llm_call([var1], "extract list of top 10 tech stock ticker symbols")  # Step 2: Extract ticker symbols
+analysis = llm_call([var2], "Analyze the financial performance and future outlook of these stocks")  # Step 3: Analyze stocks
+url = write_file("tech_stocks_analysis.txt", analysis)  # Step 4: Save analysis to file
+answer(f"Analysis complete. Saved to {url}")  # Step 5: Show URL to user
+```
+
+Here is an example of generating and saving a chart:
+
+{{user_colon_token}} "Create a chart showing sales trends and save it"
+{{assistant_colon_token}}
+```python
+var1 = pandas_bind("https://example.com/sales_data.csv")  # Step 1: Load sales data
+sales = var1.ask("extract monthly sales as list of numbers")  # Step 2: Get sales numbers
+months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"]
+
+# Step 3: Create matplotlib chart
+plt.figure(figsize=(10, 6))
+plt.plot(months, sales)
+plt.title("Monthly Sales Trend")
+plt.xlabel("Month")
+plt.ylabel("Sales ($)")
+
+# Step 4: Save chart to file
+url = write_file("sales_chart.png", plt.gcf())  # Save current figure
+answer(f"Chart saved to {url}")  # Step 5: Show URL to user
+```
+
+Here is an example of reading a previously saved file:
+
+{{user_colon_token}} "Read the tech stocks analysis we saved earlier and create a summary"
+{{assistant_colon_token}}
+```python
+var1 = read_file("tech_stocks_analysis.txt")  # Step 1: Read previously saved analysis
+var2 = llm_call([var1], "Create a 3-sentence executive summary")  # Step 2: Summarize the analysis
+answer(var2)  # Step 3: Show summary to user
+```
+
+Here is an example of a multi-step workflow with file saving:
+
+{{user_colon_token}} "Download and analyze https://example.com/data.csv, create visualizations, and save everything"
+{{assistant_colon_token}}
+```python
+# Step 1: Download and save raw data
+var1 = download("https://example.com/data.csv")
+url1 = write_file("raw_data.csv", var1)
+
+# Step 2: Analyze the data
+var2 = pandas_bind(var1)
+analysis = var2.ask("What are the key trends in this dataset?")
+url2 = write_file("analysis.txt", analysis)
+
+# Step 3: Create visualization
+plt.figure(figsize=(12, 8))
+# ... plotting code ...
+url3 = write_file("visualization.png", plt.gcf())
+
+# Step 4: Generate summary report
+summary = llm_call([analysis], "Create an executive summary with key findings")
+url4 = write_file("summary.txt", summary)
+
+answer(f"Analysis complete. Files saved:\n- Data: {url1}\n- Analysis: {url2}\n- Chart: {url3}\n- Summary: {url4}")
 ```
 
 A very complicated example:
