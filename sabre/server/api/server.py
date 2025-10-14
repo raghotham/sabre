@@ -5,12 +5,15 @@ HTTP SSE-based server that handles chat messages and streams back responses.
 """
 
 import asyncio
+import datetime
 import json
 import logging
+import os
+import time
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 import jsonpickle
@@ -24,6 +27,7 @@ from sabre.common import (
     CancelledEvent,
     ErrorEvent,
 )
+from sabre.common.paths import get_logs_dir, get_files_dir, ensure_dirs
 from sabre.server.orchestrator import Orchestrator
 from sabre.server.python_runtime import PythonRuntime
 
@@ -71,8 +75,6 @@ class SessionManager:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup/shutdown."""
-    from sabre.common.paths import get_logs_dir, ensure_dirs
-
     # Ensure directories exist
     ensure_dirs()
 
@@ -81,8 +83,6 @@ async def lifespan(app: FastAPI):
 
     # Configure logging to both file and console
     # Use LOG_LEVEL env var (DEBUG, INFO, WARNING, ERROR) or default to INFO
-    import os
-
     log_level_name = os.getenv("LOG_LEVEL", "INFO").upper()
     log_level = getattr(logging, log_level_name, logging.INFO)
 
@@ -143,9 +143,6 @@ async def serve_file(conversation_id: str, filename: str):
     - Validates filename is basename only (no path traversal)
     - Returns 404 for non-existent files
     """
-    from sabre.common.paths import get_files_dir
-    from fastapi import HTTPException
-
     # Security: basename only (prevent path traversal)
     if os.path.basename(filename) != filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
@@ -206,9 +203,6 @@ async def message_endpoint(request: Request):
             # Create event callback to stream events
             async def event_callback(event: Event):
                 """Encode and queue events for streaming."""
-                import datetime
-                import time
-
                 # Log before encoding
                 encode_start = time.time()
                 timestamp_str = datetime.datetime.now().isoformat()
@@ -311,10 +305,6 @@ async def message_endpoint(request: Request):
                         break
 
                     # Event is already encoded - just yield it immediately!
-                    import time
-                    import datetime
-                    import json
-
                     # Decode to get event details for logging (quick)
                     try:
                         decoded = jsonpickle.decode(encoded)
@@ -411,8 +401,6 @@ if __name__ == "__main__":
 
     # Configure logging
     # Use LOG_LEVEL env var (DEBUG, INFO, WARNING, ERROR) or default to INFO
-    import os
-
     log_level_name = os.getenv("LOG_LEVEL", "INFO").upper()
     log_level = getattr(logging, log_level_name, logging.INFO)
 
