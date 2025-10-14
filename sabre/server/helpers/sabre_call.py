@@ -10,7 +10,7 @@ This is SABRE's equivalent of LLMVM's llmvm_call/delegate_task.
 import logging
 from typing import Any, Callable
 
-from sabre.common.models.messages import Content, MarkdownContent, TextContent
+from sabre.common.models.messages import Content, TextContent
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ class SabreCall:
         task_description: str,
         expr_list: list[Any],
         include_original_task: bool = True,
-    ) -> MarkdownContent:
+    ) -> list[Content]:
         """
         Delegate a task to a new SABRE orchestration session.
 
@@ -54,7 +54,7 @@ class SabreCall:
             include_original_task: Whether to include high-level task context
 
         Returns:
-            MarkdownContent with the task result
+            list[Content] with the task results (can include TextContent, ImageContent, etc.)
 
         Example:
             # Parallelize tasks
@@ -125,10 +125,16 @@ class SabreCall:
 
             if not result.success:
                 logger.error(f"sabre_call failed: {result.error}")
-                return MarkdownContent([TextContent(f"ERROR: {result.error}")])
+                return [TextContent(f"ERROR: {result.error}")]
 
+            # Parse final_response to extract structured content (text + any image URLs)
+            # The final_response may contain markdown image URLs like ![alt](url)
+            # For now, return as TextContent - could be enhanced to parse images
             logger.info(f"sabre_call succeeded: {len(result.final_response)} chars")
-            return MarkdownContent([TextContent(result.final_response)])
+
+            # Return as list[Content] for flexibility
+            # This allows subtasks to return images, files, etc. in the future
+            return [TextContent(result.final_response)]
 
         except Exception as e:
             logger.error(f"sabre_call exception: {e}", exc_info=True)
