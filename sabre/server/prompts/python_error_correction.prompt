@@ -51,7 +51,7 @@ T = TypeVar('T')
 
 16. last_user() -> list[Content]. Returns the last user message.
 
-17. async delegate_task(task: str, expr_list: list[Any], include_original_task=True) -> MarkdownContent. Delegates a task to the SABRE server to run asynchronously and with all the helpers enabled. Returns the result of the task as a MarkdownContent object. This is an async method. Use this method if it's clear that you can compartmentalize and parallelize a task, and that you need tools or helpers to solve the task. You should pass in any thinking in <{{scratchpad_token}}></{{scratchpad_token}}> blocks that you have emitted into the expr_list so that the LLM understands the macro level task and the thinking behind it. include_original_task=True if you want to pass the original task to the LLM for context.
+17. async sabre_call(task: str, expr_list: list[Any], include_original_task=True) -> MarkdownContent. Delegates a task to run asynchronously in a NEW conversation with ALL helpers enabled (recursive SABRE execution). Returns the result of the task as a MarkdownContent object. This is an async method and is SABRE's core recursive execution capability. Use this method when you can compartmentalize and parallelize tasks that need tools or helpers. You should pass in any thinking in <{{scratchpad_token}}></{{scratchpad_token}}> blocks that you have emitted into the expr_list so that the LLM understands the macro level task and the thinking behind it. include_original_task=True if you want to pass the original task to the LLM for context.
 
 The imports you have available to you are: os, sys, asyncio, base64, inspect, json, marshal, math, random, re, json, types, numpy (as np), pandas (as pd) and scipy as (scipy). There are no other libraries available.
 

@@ -24,6 +24,7 @@ from sabre.server.helpers.pandas_bind import PandasBind
 from sabre.server.helpers.matplotlib_helpers import matplotlib_to_image, generate_graph_image
 from sabre.server.helpers.introspection import get_helper_signatures
 from sabre.server.helpers.fs import write_file, read_file
+from sabre.server.helpers.sabre_call import SabreCall
 from sabre.common.models.messages import Content, ImageContent, TextContent
 
 if TYPE_CHECKING:
@@ -79,6 +80,20 @@ class PythonRuntime:
         llm_list_bind = LLMListBind(lambda: self.orchestrator, self._get_openai_client)
         pandas_bind = PandasBind(lambda: self.orchestrator, self._get_openai_client)
 
+        # Helper for recursive execution - needs orchestrator, tree, and event callback
+        # These are accessed via execution_context
+        def get_tree():
+            from sabre.common.execution_context import get_execution_context
+            ctx = get_execution_context()
+            return ctx.tree if ctx else None
+
+        def get_event_callback():
+            from sabre.common.execution_context import get_execution_context
+            ctx = get_execution_context()
+            return ctx.event_callback if ctx else None
+
+        sabre_call = SabreCall(lambda: self.orchestrator, get_tree, get_event_callback)
+
         # Build namespace with helpers
         self.namespace = {
             # Class-based helpers (stateless)
@@ -93,6 +108,7 @@ class PythonRuntime:
             "coerce": coerce,
             "llm_list_bind": llm_list_bind,
             "pandas_bind": pandas_bind,
+            "sabre_call": sabre_call,  # Recursive execution
             "result": self._result,
             "capture_figures": self._capture_figures_for_user,
             # File I/O helpers (stateless)
