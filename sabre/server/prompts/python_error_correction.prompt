@@ -39,19 +39,19 @@ T = TypeVar('T')
 
 10. write_memory(key: str, summary: str, value: list[Content] | str) -> None. Writes a value to memory that you can retrieve later. This is useful for writing content and context to memory, and thus not having to keep the content in your context window. E.g. crawling a website, you could write out the results of the crawl to memory, using the url as the key. The summary string should be a short summary of the content that you're writing to memory, so that you can easily recall it later.
 
-11. read_memory_keys() -> list[dict[str, str]]. Returns a list of all memory keys and summary of the memory in the LLMVM memory, {'key': '...', 'summary': '...'}.
+11. read_memory_keys() -> list[dict[str, str]]. Returns a list of all memory keys and summary of the memory, {'key': '...', 'summary': '...'}.
 
-12. read_memory(key: str) -> list[Content]. Reads a value from the LLMVM memory.
+12. read_memory(key: str) -> list[Content]. Reads a value from memory.
 
-13. read_file(full_path_filename: str) -> TextContent. Reads a file from the users local filesystem, or from the LLMVM scratch directory, and returns it as text in TextContent. full_path_filename can be a full path or a basename.
+13. read_file(full_path_filename: str) -> Content. Reads a file from the users local filesystem, or from the conversation directory, and returns appropriate Content type. full_path_filename can be a full path or a basename.
 
-14. write_file(filename: str, content: list[Content] | str) -> bool. Writes a file called filename to the LLMVM scratch directory. Returns True if the file was written successfully, False otherwise. filename can only be a basename, not a full path.
+14. write_file(filename: str, content: Any) -> str. Writes a file called filename to the conversation directory and returns an HTTP URL to access it. filename can only be a basename, not a full path.
 
 15. last_assistant() -> list[Content]. Returns the last assistant message.
 
 16. last_user() -> list[Content]. Returns the last user message.
 
-17. async delegate_task(task: str, expr_list: list[Any], include_original_task=True) -> MarkdownContent. Delegates a task to the LLMVM server to run asynchronously and with all the helpers enabled. Returns the result of the task as a MarkdownContent object. This is an async method. Use this method if it's clear that you can compartmentalize and parallelize a task, and that you need tools or helpers to solve the task. You should pass in any thinking in <{{scratchpad_token}}></{{scratchpad_token}}> blocks that you have emitted into the expr_list so that the LLM understands the macro level task and the thinking behind it. include_original_task=True if you want to pass the original task to the LLM for context.
+17. async delegate_task(task: str, expr_list: list[Any], include_original_task=True) -> MarkdownContent. Delegates a task to the SABRE server to run asynchronously and with all the helpers enabled. Returns the result of the task as a MarkdownContent object. This is an async method. Use this method if it's clear that you can compartmentalize and parallelize a task, and that you need tools or helpers to solve the task. You should pass in any thinking in <{{scratchpad_token}}></{{scratchpad_token}}> blocks that you have emitted into the expr_list so that the LLM understands the macro level task and the thinking behind it. include_original_task=True if you want to pass the original task to the LLM for context.
 
 The imports you have available to you are: os, sys, asyncio, base64, inspect, json, marshal, math, random, re, json, types, numpy (as np), pandas (as pd) and scipy as (scipy). There are no other libraries available.
 

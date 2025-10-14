@@ -12,7 +12,7 @@ import asyncio
 import sys
 import os
 
-# Add llmvm2 to path
+# Add sabre to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 
 

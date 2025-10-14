@@ -1,5 +1,5 @@
 """
-LLMVM2 Tests
+SABRE Tests
 
-Test suite for llmvm2 using pytest.
+Test suite for SABRE using pytest.
 """

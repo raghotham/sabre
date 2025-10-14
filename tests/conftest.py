@@ -1,5 +1,5 @@
 """
-Pytest configuration for llmvm2 tests.
+Pytest configuration for SABRE tests.
 
 This file contains shared fixtures and configuration for all tests.
 """

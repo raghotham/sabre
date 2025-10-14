@@ -62,8 +62,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/9600dev/llmvm"
-Repository = "https://github.com/9600dev/llmvm"
+Homepage = "https://github.com/9600dev/sabre"
+Repository = "https://github.com/9600dev/sabre"
 
 [project.scripts]
 sabre = "sabre.cli:main"

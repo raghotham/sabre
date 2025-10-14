@@ -16,7 +16,7 @@ class Singleton(type):
 
 
 class Container(metaclass=Singleton):
-    def __init__(self, config_file: str = os.path.expanduser("~/.config/llmvm/config.yaml"), throw: bool = True):
+    def __init__(self, config_file: str = os.path.expanduser("~/.config/sabre/config.yaml"), throw: bool = True):
         # First, load the default configuration
         default_config_path = Path(__file__).parent.parent / "default_config.yaml"
         if default_config_path.exists():
@@ -28,8 +28,8 @@ class Container(metaclass=Singleton):
         self.config_file = config_file
         self.type_instance_cache: dict[Type, object] = {}
 
-        if os.getenv("LLMVM_CONFIG"):
-            self.config_file = cast(str, os.getenv("LLMVM_CONFIG"))
+        if os.getenv("SABRE_CONFIG"):
+            self.config_file = cast(str, os.getenv("SABRE_CONFIG"))
 
         # Load user config if it exists and merge with defaults
         if os.path.exists(self.config_file):
@@ -39,7 +39,7 @@ class Container(metaclass=Singleton):
                 self._deep_merge(self.configuration, user_config)
         elif not os.path.exists(self.config_file) and throw and not default_config_path.exists():
             raise ValueError(
-                "configuration_file {} is not found. Put config in ~/.config/llmvm or set LLMVM_CONFIG".format(
+                "configuration_file {} is not found. Put config in ~/.config/sabre or set SABRE_CONFIG".format(
                     config_file
                 )
             )
@@ -120,15 +120,10 @@ class Container(metaclass=Singleton):
             # Check direct name first
             if container.has(name):
                 return parse(container.get(name))
-            # Check lowercase version without LLMVM_ prefix
-            if container.has(name.replace("LLMVM_", "").lower()):
-                return parse(container.get(name.replace("LLMVM_", "").lower()))
             # Check alternate name
             if alternate_name:
                 if container.has(alternate_name):
                     return parse(container.get(alternate_name))
-                if container.has(alternate_name.replace("LLMVM_", "").lower()):
-                    return parse(container.get(alternate_name.replace("LLMVM_", "").lower()))
         except:
             pass
 

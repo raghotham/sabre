@@ -659,7 +659,7 @@ class Orchestrator:
             # Load result prompt and template the raw output
             prompt = PromptLoader.load(prompt_name, template={template_key: raw_output})
 
-            # Return just the user_message part (as per old llmvm pattern)
+            # Return just the user_message part
             formatted = prompt["user_message"]
             logger.info(f"Result formatted: {len(raw_output)} → {len(formatted)} chars")
             return formatted, prompt_name

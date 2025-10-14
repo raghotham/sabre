@@ -137,7 +137,6 @@ class PromptLoader:
             # Evaluate expression
             try:
                 # Make common imports and stubs available in eval context
-                # Stubs for llmvm compatibility (sabre doesn't have these)
                 class ContainerStub:
                     def get_config_variable(self, key, env_var, default=""):
                         return os.path.expanduser(os.getenv(env_var, default))
