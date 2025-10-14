@@ -118,16 +118,6 @@ class SabrePaths:
         return base
 
     @staticmethod
-    def get_config_file() -> Path:
-        """Get main config file path."""
-        return SabrePaths.get_config_home() / "config.yaml"
-
-    @staticmethod
-    def get_personas_file() -> Path:
-        """Get personas config file path."""
-        return SabrePaths.get_config_home() / "personas.yaml"
-
-    @staticmethod
     def get_pid_file() -> Path:
         """Get server PID file path (state)."""
         return SabrePaths.get_state_home() / "logs" / "server.pid"
@@ -195,11 +185,6 @@ def get_logs_dir() -> Path:
 def get_files_dir(conversation_id: str = None) -> Path:
     """Get files directory."""
     return SabrePaths.get_files_dir(conversation_id)
-
-
-def get_config_file() -> Path:
-    """Get config file path."""
-    return SabrePaths.get_config_file()
 
 
 def get_pid_file() -> Path:

@@ -41,7 +41,6 @@ uv run sabre "message"
 
 ### Optional - Configuration
 
-- **`SABRE_CONFIG`** - Path to custom config file (default: `~/.config/sabre/config.yaml`)
 - **`LOG_LEVEL`** - Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR` (default: `INFO`)
 
 ### Optional - UI/Theme
@@ -62,7 +61,6 @@ When using default XDG paths:
   └── memory/             # Conversation memory/context
 
 ~/.config/sabre/          # Config directory (XDG_CONFIG_HOME/sabre)
-  └── config.yaml         # Configuration file
 
 ~/.local/state/sabre/     # State directory (XDG_STATE_HOME/sabre)
   └── logs/               # Application logs
