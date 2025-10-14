@@ -12,6 +12,10 @@ Persona-driven AI agent with:
 ## Quick Start
 
 ```bash
+# Install dependencies (first time only)
+uv sync
+playwright install chromium
+
 # Open up Terminal UI
 uv run sabre
 

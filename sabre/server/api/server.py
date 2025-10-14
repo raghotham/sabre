@@ -72,6 +72,36 @@ class SessionManager:
             logger.info(f"Cleared session for conversation {conversation_id}")
 
 
+def check_playwright_installation():
+    """
+    Check if Playwright is properly installed.
+
+    Raises:
+        RuntimeError: If Playwright or browser binaries are not installed
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+
+        # Try to get the browser executable path
+        with sync_playwright() as p:
+            try:
+                # Check if chromium is installed
+                browser_type = p.chromium
+                # This will raise if browser is not installed
+                executable_path = browser_type.executable_path
+                logger.info(f"Playwright chromium found at: {executable_path}")
+            except Exception as e:
+                raise RuntimeError(
+                    "Playwright browser binaries not installed. "
+                    "Please run: playwright install chromium"
+                ) from e
+    except ImportError as e:
+        raise RuntimeError(
+            "Playwright not installed. "
+            "Please run: uv sync"
+        ) from e
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup/shutdown."""
@@ -92,6 +122,14 @@ async def lifespan(app: FastAPI):
         handlers=[logging.StreamHandler(), logging.FileHandler(log_dir / "server.log")],
     )
     logger.info("Starting sabre server...")
+
+    # Check Playwright installation
+    try:
+        check_playwright_installation()
+    except RuntimeError as e:
+        logger.error(f"Playwright check failed: {e}")
+        raise
+
     yield
     logger.info("Shutting down sabre server...")
 
