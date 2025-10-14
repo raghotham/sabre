@@ -72,7 +72,7 @@ class SessionManager:
             logger.info(f"Cleared session for conversation {conversation_id}")
 
 
-def check_playwright_installation():
+async def check_playwright_installation():
     """
     Check if Playwright is properly installed.
 
@@ -80,10 +80,10 @@ def check_playwright_installation():
         RuntimeError: If Playwright or browser binaries are not installed
     """
     try:
-        from playwright.sync_api import sync_playwright
+        from playwright.async_api import async_playwright
 
         # Try to get the browser executable path
-        with sync_playwright() as p:
+        async with async_playwright() as p:
             try:
                 # Check if chromium is installed
                 browser_type = p.chromium
@@ -125,7 +125,7 @@ async def lifespan(app: FastAPI):
 
     # Check Playwright installation
     try:
-        check_playwright_installation()
+        await check_playwright_installation()
     except RuntimeError as e:
         logger.error(f"Playwright check failed: {e}")
         raise
