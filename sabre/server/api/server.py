@@ -81,20 +81,37 @@ async def check_playwright_installation():
     """
     try:
         from playwright.async_api import async_playwright
+        import os
+        from pathlib import Path
 
-        # Try to get the browser executable path
+        # Check if chromium headless shell exists (what's actually used for scraping)
         async with async_playwright() as p:
             try:
-                # Check if chromium is installed
+                # Get the expected executable path
                 browser_type = p.chromium
-                # This will raise if browser is not installed
-                executable_path = browser_type.executable_path
-                logger.info(f"Playwright chromium found at: {executable_path}")
+                # Try to get executable_path - will work even if binary doesn't exist
+                expected_path = browser_type.executable_path
+
+                # Check if it actually exists
+                if not os.path.exists(expected_path):
+                    raise RuntimeError(
+                        "Playwright browser binaries not installed. "
+                        "Please run: playwright install chromium"
+                    )
+
+                logger.info(f"Playwright chromium found at: {expected_path}")
+            except AttributeError:
+                # executable_path might not exist, try launching
+                browser = await browser_type.launch(headless=True)
+                await browser.close()
+                logger.info("Playwright chromium verified successfully")
             except Exception as e:
-                raise RuntimeError(
-                    "Playwright browser binaries not installed. "
-                    "Please run: playwright install chromium"
-                ) from e
+                if "Executable doesn't exist" in str(e):
+                    raise RuntimeError(
+                        "Playwright browser binaries not installed. "
+                        "Please run: playwright install chromium"
+                    ) from e
+                raise
     except ImportError as e:
         raise RuntimeError(
             "Playwright not installed. "
