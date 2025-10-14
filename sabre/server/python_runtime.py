@@ -25,7 +25,7 @@ from sabre.server.helpers.matplotlib_helpers import matplotlib_to_image, generat
 from sabre.server.helpers.introspection import get_helper_signatures
 from sabre.server.helpers.fs import write_file, read_file
 from sabre.server.helpers.sabre_call import SabreCall
-from sabre.common.models.messages import Content, ImageContent, TextContent
+from sabre.common.models.messages import Content, ImageContent, TextContent, PdfContent, FileContent
 
 if TYPE_CHECKING:
     pass
@@ -84,11 +84,13 @@ class PythonRuntime:
         # These are accessed via execution_context
         def get_tree():
             from sabre.common.execution_context import get_execution_context
+
             ctx = get_execution_context()
             return ctx.tree if ctx else None
 
         def get_event_callback():
             from sabre.common.execution_context import get_execution_context
+
             ctx = get_execution_context()
             return ctx.event_callback if ctx else None
 
@@ -326,8 +328,7 @@ results directly when possible."""
         # Step 1: Security - basename only
         if os.path.basename(filename) != filename:
             raise RuntimeError(
-                f"write_file() requires basename only (got '{filename}'). "
-                "Use 'data.csv', not 'path/to/data.csv'"
+                f"write_file() requires basename only (got '{filename}'). Use 'data.csv', not 'path/to/data.csv'"
             )
 
         # Step 2: Get conversation ID from context

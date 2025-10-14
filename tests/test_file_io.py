@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Test write_file() and read_file() helpers."""
 
 import os
@@ -8,7 +7,7 @@ from pathlib import Path
 
 # Test imports
 from sabre.server.helpers.fs import write_file, read_file
-from sabre.common.models.messages import ImageContent, TextContent, PdfContent, FileContent
+from sabre.common.models.messages import ImageContent, TextContent
 from sabre.common.execution_context import set_execution_context, clear_execution_context
 
 
@@ -18,9 +17,7 @@ def test_write_read_text_file():
 
     # Set up context
     test_conv_id = "test-conv-text-file"
-    set_execution_context(
-        event_callback=None, tree=None, tree_context={}, conversation_id=test_conv_id
-    )
+    set_execution_context(event_callback=None, tree=None, tree_context={}, conversation_id=test_conv_id)
 
     try:
         # Write text file
@@ -65,7 +62,7 @@ def test_write_read_json_file():
         assert isinstance(content, TextContent)
         assert "Alice" in content.get_str()
         assert "Brisbane" in content.get_str()
-        print(f"✓ Content contains expected data")
+        print("✓ Content contains expected data")
 
         # Cleanup
         files_dir = Path.home() / ".local" / "share" / "sabre" / "files" / test_conv_id
@@ -99,7 +96,7 @@ def test_write_read_image():
         print(f"✓ Read file, content type: {type(content).__name__}")
         assert isinstance(content, ImageContent)
         assert content.mime_type == "image/png"
-        print(f"✓ Content is ImageContent with correct MIME type")
+        print("✓ Content is ImageContent with correct MIME type")
 
         # Cleanup
         files_dir = Path.home() / ".local" / "share" / "sabre" / "files" / test_conv_id
@@ -158,10 +155,10 @@ def test_read_absolute_path():
             content = read_file(temp_path)
             assert isinstance(content, TextContent)
             assert content.get_str() == "Absolute path test content"
-            print(f"✓ Read file with absolute path successfully")
+            print("✓ Read file with absolute path successfully")
         finally:
             os.unlink(temp_path)
-            print(f"✓ Cleaned up temp file")
+            print("✓ Cleaned up temp file")
 
     finally:
         clear_execution_context()

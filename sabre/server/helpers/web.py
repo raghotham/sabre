@@ -178,7 +178,6 @@ async def _download_async(urls_or_results: Any, max_urls: int = 10) -> list:
 
     This is the actual implementation that handles async browser operations properly.
     """
-    import os
     import base64
     from sabre.common.models.messages import Content, ImageContent, TextContent
 

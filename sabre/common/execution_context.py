@@ -20,6 +20,7 @@ class ExecutionContext:
 
     Contains all the context needed for helpers to emit events and track execution.
     """
+
     event_callback: Optional[Callable[["Event"], Awaitable[None]]]
     tree: Optional["ExecutionTree"]
     tree_context: dict
@@ -27,10 +28,7 @@ class ExecutionContext:
 
 
 # Context variable (async-safe, thread-aware)
-_execution_context_var: ContextVar[Optional[ExecutionContext]] = ContextVar(
-    'execution_context',
-    default=None
-)
+_execution_context_var: ContextVar[Optional[ExecutionContext]] = ContextVar("execution_context", default=None)
 
 
 def get_execution_context() -> Optional[ExecutionContext]:
@@ -49,7 +47,7 @@ def set_execution_context(
     event_callback: Optional[Callable[["Event"], Awaitable[None]]],
     tree: Optional["ExecutionTree"],
     tree_context: dict,
-    conversation_id: str
+    conversation_id: str,
 ) -> None:
     """
     Set execution context for current async task.
@@ -61,10 +59,7 @@ def set_execution_context(
         conversation_id: OpenAI conversation ID
     """
     ctx = ExecutionContext(
-        event_callback=event_callback,
-        tree=tree,
-        tree_context=tree_context,
-        conversation_id=conversation_id
+        event_callback=event_callback, tree=tree, tree_context=tree_context, conversation_id=conversation_id
     )
     _execution_context_var.set(ctx)
 

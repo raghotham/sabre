@@ -81,8 +81,6 @@ async def check_playwright_installation():
     """
     try:
         from playwright.async_api import async_playwright
-        import os
-        from pathlib import Path
 
         # Check if chromium headless shell exists (what's actually used for scraping)
         async with async_playwright() as p:
@@ -95,8 +93,7 @@ async def check_playwright_installation():
                 # Check if it actually exists
                 if not os.path.exists(expected_path):
                     raise RuntimeError(
-                        "Playwright browser binaries not installed. "
-                        "Please run: playwright install chromium"
+                        "Playwright browser binaries not installed. Please run: playwright install chromium"
                     )
 
                 logger.info(f"Playwright chromium found at: {expected_path}")
@@ -108,15 +105,11 @@ async def check_playwright_installation():
             except Exception as e:
                 if "Executable doesn't exist" in str(e):
                     raise RuntimeError(
-                        "Playwright browser binaries not installed. "
-                        "Please run: playwright install chromium"
+                        "Playwright browser binaries not installed. Please run: playwright install chromium"
                     ) from e
                 raise
     except ImportError as e:
-        raise RuntimeError(
-            "Playwright not installed. "
-            "Please run: uv sync"
-        ) from e
+        raise RuntimeError("Playwright not installed. Please run: uv sync") from e
 
 
 @asynccontextmanager

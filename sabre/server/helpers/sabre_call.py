@@ -97,12 +97,13 @@ class SabreCall:
         # Push nested call node to execution tree
         if tree:
             from sabre.common import ExecutionNodeType
+
             tree.push(
                 ExecutionNodeType.NESTED_LLM_CALL,
                 metadata={
                     "helper": "sabre_call",
                     "task": task_description[:100],
-                }
+                },
             )
 
         try:
@@ -121,6 +122,7 @@ class SabreCall:
 
             if tree:
                 from sabre.common import ExecutionStatus
+
                 tree.pop(ExecutionStatus.COMPLETED)
 
             if not result.success:
@@ -140,5 +142,6 @@ class SabreCall:
             logger.error(f"sabre_call exception: {e}", exc_info=True)
             if tree:
                 from sabre.common import ExecutionStatus
+
                 tree.pop(ExecutionStatus.ERROR)
             raise RuntimeError(f"sabre_call failed: {e}")

@@ -49,8 +49,7 @@ def write_file(filename: str, content: Any) -> str:
     # Step 1: Security - basename only
     if os.path.basename(filename) != filename:
         raise RuntimeError(
-            f"write_file() requires basename only (got '{filename}'). "
-            "Use 'data.csv', not 'path/to/data.csv'"
+            f"write_file() requires basename only (got '{filename}'). Use 'data.csv', not 'path/to/data.csv'"
         )
 
     # Step 2: Get conversation ID from context
