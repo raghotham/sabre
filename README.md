@@ -12,7 +12,7 @@ Persona-driven AI agent with:
 git clone https://github.com/raghotham/sabre
 cd sabre
 uv sync
-playwright install chromium
+uvx playwright install chromium --only-shell
 ```
 
 ## Environment Variables

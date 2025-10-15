@@ -372,9 +372,15 @@ class Client:
                             self.tui.print()  # Blank line
                             self.tui.print_tree_node("COMPLETE", "", depth=event.depth, path=event.path)
                             self.tui.render_complete(event.data, event.depth)
-                        self.tui.print()  # Blank line after response
-                        self.processing = False
-                        break
+                        # Only break on top-level complete (depth=1)
+                        # Nested complete events (depth > 1) are from sabre_call/llm_call
+                        if event.depth == 1:
+                            self.tui.print()  # Blank line after response
+                            self.processing = False
+                            break
+                        # For nested completes, just continue processing events
+                        elif final_message.strip():
+                            self.tui.print()  # Blank line after nested complete
 
                     elif isinstance(event, CancelledEvent):
                         cancel_msg = event.data["message"]
@@ -456,6 +462,18 @@ class Client:
         try:
             # Create HTTP client (no persistent connection needed for SSE)
             async with httpx.AsyncClient() as client:
+                # Fetch server health (including model) at startup
+                try:
+                    health_response = await client.get(f"{self.server_url}/health", timeout=5.0)
+                    if health_response.status_code == 200:
+                        health_data = health_response.json()
+                        model = health_data.get("model", "unknown")
+                        self.tui.print(f'Model: <style fg="ansibrightcyan">{model}</style>\n')
+                    else:
+                        logger.warning(f"Failed to fetch server health: {health_response.status_code}")
+                except Exception as e:
+                    logger.warning(f"Could not fetch server health: {e}")
+
                 self.tui.print("<style fg=\"ansigreen\">Ready!</style> Type your message (Ctrl+D or 'exit' to quit)")
                 self.tui.print('<style fg="ansibrightblack">Press Esc to cancel execution</style>\n')
 

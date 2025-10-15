@@ -74,40 +74,44 @@ class SessionManager:
 
 async def check_playwright_installation():
     """
-    Check if Playwright is properly installed.
+    Check if Playwright chromium_headless_shell is installed.
 
     Raises:
         RuntimeError: If Playwright or browser binaries are not installed
     """
     try:
-        from playwright.async_api import async_playwright
+        import json
+        from pathlib import Path
+        import site
 
-        # Check if chromium headless shell exists (what's actually used for scraping)
-        async with async_playwright() as p:
-            try:
-                # Get the expected executable path
-                browser_type = p.chromium
-                # Try to get executable_path - will work even if binary doesn't exist
-                expected_path = browser_type.executable_path
+        # Get expected chromium version from playwright package
+        chromium_version = None
+        for site_dir in site.getsitepackages():
+            browsers_json = Path(site_dir) / "playwright" / "driver" / "package" / "browsers.json"
+            if browsers_json.exists():
+                with open(browsers_json) as f:
+                    data = json.load(f)
+                    for browser in data["browsers"]:
+                        if browser["name"] == "chromium":
+                            chromium_version = browser["revision"]
+                            break
+                break
 
-                # Check if it actually exists
-                if not os.path.exists(expected_path):
-                    raise RuntimeError(
-                        "Playwright browser binaries not installed. Please run: playwright install chromium"
-                    )
+        if not chromium_version:
+            raise RuntimeError("Could not determine required chromium version")
 
-                logger.info(f"Playwright chromium found at: {expected_path}")
-            except AttributeError:
-                # executable_path might not exist, try launching
-                browser = await browser_type.launch(headless=True)
-                await browser.close()
-                logger.info("Playwright chromium verified successfully")
-            except Exception as e:
-                if "Executable doesn't exist" in str(e):
-                    raise RuntimeError(
-                        "Playwright browser binaries not installed. Please run: playwright install chromium"
-                    ) from e
-                raise
+        # Check if chromium_headless_shell is installed
+        playwright_cache = Path.home() / "Library" / "Caches" / "ms-playwright"
+        headless_dir = playwright_cache / f"chromium_headless_shell-{chromium_version}"
+
+        if not headless_dir.exists():
+            raise RuntimeError(
+                f"Playwright chromium_headless_shell-{chromium_version} not installed. "
+                f"Please run: uvx playwright install chromium --only-shell"
+            )
+
+        logger.info(f"Playwright chromium_headless_shell-{chromium_version} found")
+
     except ImportError as e:
         raise RuntimeError("Playwright not installed. Please run: uv sync") from e
 
@@ -176,6 +180,7 @@ async def health():
     """Health check with details."""
     return {
         "status": "ok",
+        "model": manager.orchestrator.executor.default_model,
         "active_sessions": len(manager.sessions),
         "running_tasks": len(manager.running_tasks),
     }

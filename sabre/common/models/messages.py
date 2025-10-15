@@ -96,6 +96,23 @@ class ImageContent(Content):
         """True if this is a file_id reference, False if base64 data"""
         return self.file_id is not None
 
+    def __repr__(self) -> str:
+        """Custom repr that doesn't include full base64 (for logging)"""
+        if self.file_id:
+            return f"ImageContent(file_id={self.file_id!r})"
+        elif self.image_data:
+            # Check if it's a URL (http://) or base64
+            if self.image_data.startswith("http://") or self.image_data.startswith("https://"):
+                # Extract file path from URL if it's a local file
+                # URL format: http://localhost:8011/files/{conversation_id}/filename.png
+                return f"ImageContent(url={self.image_data!r})"
+            else:
+                # Truncate base64 for logging
+                preview = self.image_data[:50] + "..." if len(self.image_data) > 50 else self.image_data
+                return f"ImageContent(base64={preview!r} [{len(self.image_data)} chars])"
+        else:
+            return "ImageContent(empty)"
+
 
 @dataclass
 class CodeContent(Content):
