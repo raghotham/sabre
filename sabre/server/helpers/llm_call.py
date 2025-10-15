@@ -38,7 +38,14 @@ def run_async_from_sync(coro: Coroutine[None, None, T], timeout: int = 300) -> T
         # No running loop - create a new one
         loop = asyncio.new_event_loop()
         try:
-            return loop.run_until_complete(coro)
+            result = loop.run_until_complete(coro)
+            # Properly cleanup async generators and pending tasks
+            loop.run_until_complete(loop.shutdown_asyncgens())
+            # Give pending tasks a chance to cleanup
+            pending = asyncio.all_tasks(loop)
+            if pending:
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            return result
         finally:
             loop.close()
 
@@ -133,11 +140,13 @@ class LLMCall:
         from sabre.common.models.messages import Content, ImageContent
 
         context_parts = []
+        image_attachments = []  # Collect images for structured input
+
         for i, expr in enumerate(expr_list):
             if isinstance(expr, ImageContent):
-                # Format image as markdown so LLM can see it
-                image_markdown = f"![Image {i + 1}](data:{expr.mime_type};base64,{expr.image_data})"
-                context_parts.append(f"### Context {i + 1} (Image)\n{image_markdown}")
+                # Don't embed base64 in text - collect for structured attachment
+                context_parts.append(f"### Context {i + 1} (Image)\n[Image {i + 1}]")
+                image_attachments.append(expr)
             elif isinstance(expr, Content):
                 # Use get_str() for Content objects
                 context_parts.append(f"### Context {i + 1}\n{expr.get_str()}")
@@ -173,11 +182,9 @@ class LLMCall:
             from sabre.server.python_runtime import PythonRuntime
             from sabre.common.executors.response import ResponseExecutor
 
-            # Get OpenAI client to create executor
-            client = self.get_openai_client()
-
             # Create new executor, runtime, and orchestrator for this nested call
-            executor = ResponseExecutor(client=client, model="gpt-4o")
+            # ResponseExecutor reads OPENAI_API_KEY and other config from env
+            executor = ResponseExecutor()
             runtime = PythonRuntime()
             orchestrator = Orchestrator(executor=executor, python_runtime=runtime, max_iterations=10)
 
@@ -186,10 +193,21 @@ class LLMCall:
 
             logger.info("Created new orchestrator instance for nested llm_call")
 
+            # Upload images to Files API before passing to orchestrator
+            uploaded_images = []
+            if image_attachments:
+                logger.info(f"Uploading {len(image_attachments)} images to Files API...")
+                for img in image_attachments:
+                    # Upload and replace with file_id reference
+                    file_id = await orchestrator._upload_image_to_files_api(img)
+                    uploaded_images.append(ImageContent(file_id=file_id, mime_type=img.mime_type))
+                logger.info(f"Uploaded {len(uploaded_images)} images")
+
             # RECURSIVE CALL with new orchestrator instance
+            # Pass images as structured input to executor
             result = await orchestrator.run(
                 conversation_id=None,  # Create new conversation
-                input_text=input_text,
+                input_text=(input_text, uploaded_images) if uploaded_images else input_text,
                 tree=tree,
                 instructions=system_instructions,  # Pass our loaded instructions
                 event_callback=event_callback,  # Pass through event callback for client visibility

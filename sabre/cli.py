@@ -13,7 +13,7 @@ import sys
 import time
 from pathlib import Path
 
-from sabre.common.paths import get_logs_dir, get_pid_file, ensure_dirs, migrate_from_old_structure
+from sabre.common.paths import get_logs_dir, get_pid_file, ensure_dirs, migrate_from_old_structure, cleanup_all
 
 
 def start_server():
@@ -181,6 +181,57 @@ def stop_server():
         return 1
 
 
+def cleanup(force: bool = False):
+    """Clean up all SABRE XDG directories"""
+
+    # Get cleanup info (without actually removing)
+    result = cleanup_all(force=False)
+
+    if not result["directories"]:
+        print("No SABRE directories found to clean up.")
+        return 0
+
+    # Show what will be removed
+    print("The following directories will be removed:")
+    print()
+
+    def format_size(size_bytes):
+        """Format size in human-readable form"""
+        for unit in ["B", "KB", "MB", "GB"]:
+            if size_bytes < 1024:
+                return f"{size_bytes:.1f} {unit}"
+            size_bytes /= 1024
+        return f"{size_bytes:.1f} TB"
+
+    for directory in result["directories"]:
+        size = result["sizes"][directory]
+        print(f"  {directory} ({format_size(size)})")
+
+    print()
+    print(f"Total size: {format_size(result['total_size'])}")
+    print()
+
+    # Ask for confirmation unless force is True
+    if not force:
+        try:
+            response = input("Are you sure you want to delete these directories? [y/N]: ")
+            if response.lower() not in ("y", "yes"):
+                print("Cleanup cancelled.")
+                return 0
+        except (EOFError, KeyboardInterrupt):
+            print("\nCleanup cancelled.")
+            return 0
+
+    # Perform cleanup
+    try:
+        cleanup_all(force=True)
+        print("Cleanup complete!")
+        return 0
+    except Exception as e:
+        print(f"Error during cleanup: {e}", file=sys.stderr)
+        return 1
+
+
 async def run_client():
     """Run the client"""
     from sabre.client.client import main
@@ -192,7 +243,13 @@ def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(description="SABRE CLI")
     parser.add_argument("--stop", action="store_true", help="Stop the running server")
+    parser.add_argument("--clean", action="store_true", help="Clean up all SABRE XDG directories")
+    parser.add_argument("--force", action="store_true", help="Skip confirmation prompt (for --clean)")
     args = parser.parse_args()
+
+    # Handle --clean flag
+    if args.clean:
+        return cleanup(force=args.force)
 
     # Handle --stop flag
     if args.stop:

@@ -173,6 +173,65 @@ class SabrePaths:
         except OSError as e:
             logger.warning(f"Could not remove old directory (not empty): {old_base} - {e}")
 
+    @staticmethod
+    def cleanup_all(force: bool = False) -> dict:
+        """
+        Clean up all SABRE XDG directories.
+
+        Args:
+            force: If True, skip confirmation and delete immediately
+
+        Returns:
+            Dictionary with cleanup results including:
+            - directories: List of directories that would be/were removed
+            - sizes: Dictionary of directory sizes in bytes
+            - total_size: Total size in bytes
+            - removed: Whether directories were actually removed
+        """
+        import shutil
+
+        # Get all SABRE directories
+        directories = [
+            SabrePaths.get_data_home(),
+            SabrePaths.get_config_home(),
+            SabrePaths.get_state_home(),
+            SabrePaths.get_cache_home(),
+        ]
+
+        # Calculate sizes
+        sizes = {}
+        total_size = 0
+        existing_dirs = []
+
+        for directory in directories:
+            if directory.exists():
+                existing_dirs.append(directory)
+                # Calculate directory size
+                dir_size = sum(f.stat().st_size for f in directory.rglob("*") if f.is_file())
+                sizes[str(directory)] = dir_size
+                total_size += dir_size
+
+        result = {
+            "directories": [str(d) for d in existing_dirs],
+            "sizes": sizes,
+            "total_size": total_size,
+            "removed": False,
+        }
+
+        # If force is True, proceed with deletion
+        if force and existing_dirs:
+            for directory in existing_dirs:
+                try:
+                    shutil.rmtree(directory)
+                    logger.info(f"Removed directory: {directory}")
+                except Exception as e:
+                    logger.error(f"Failed to remove {directory}: {e}")
+                    raise
+
+            result["removed"] = True
+
+        return result
+
 
 # Convenience functions for common operations
 
@@ -200,3 +259,8 @@ def ensure_dirs():
 def migrate_from_old_structure():
     """Migrate from old directory structure."""
     SabrePaths.migrate_from_old_structure()
+
+
+def cleanup_all(force: bool = False) -> dict:
+    """Clean up all SABRE directories."""
+    return SabrePaths.cleanup_all(force=force)

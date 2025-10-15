@@ -136,7 +136,8 @@ class Orchestrator:
             if not instructions:
                 raise ValueError("instructions required when creating new conversation (conversation_id is None)")
             conversation_id = await self._create_conversation_with_instructions(instructions, model)
-            logger.info(f"Created new conversation: {conversation_id}")
+            logger.info(f"✨ Created new conversation ID: {conversation_id}")
+            logger.info("📝 Conversation data stored on OpenAI servers (not locally)")
 
         iteration = 0
         current_response_id = None
@@ -232,18 +233,18 @@ class Orchestrator:
                 )
 
             # Execute helpers (may trigger recursive orchestrator calls)
-            # This saves images to disk and appends markdown URLs to result text
+            # This saves images to disk for client display
             execution_results = await self._execute_helpers(
                 helpers=parsed.helpers, tree=tree, parent_tree_context=tree_context, event_callback=event_callback
             )
 
             # Upload images to Files API (converts base64 to file_id references)
             # This enables token-efficient continuation (~15k→1 token per image)
-            # The markdown URLs are preserved in result text for LLM to reference
+            # File IDs are appended to result text for LLM visibility
             execution_results = await self._ensure_images_uploaded(execution_results)
 
             # Build continuation input with results
-            # - <helpers_result> contains text with markdown URLs (for LLM responses)
+            # - <helpers_result> contains text with file_id references (not localhost URLs)
             # - image_refs contains file_ids (for token-efficient continuation)
 
             # DEBUG: Log what we're passing to _replace_helpers_with_results
@@ -260,6 +261,16 @@ class Orchestrator:
             logger.debug(f"Continuing with results: {response_with_results[:200]}...")
             if image_refs:
                 logger.info(f"Including {len(image_refs)} image file_id(s) in continuation")
+
+            # Validate continuation input is not empty
+            if not response_with_results or not response_with_results.strip():
+                logger.error(f"Empty continuation input generated! response_with_results={repr(response_with_results)}")
+                logger.error(f"execution_results had {len(execution_results)} items")
+                for idx, (out, items) in enumerate(execution_results):
+                    logger.error(f"  Result {idx}: output_text={repr(out[:200]) if out else 'EMPTY'}")
+                # Use a fallback message instead of empty string
+                response_with_results = "[Helper execution completed with empty result]"
+                logger.warning(f"Using fallback continuation message: {response_with_results}")
 
             # Mark response node as completed (had helpers, continuing)
             tree.pop(ExecutionStatus.COMPLETED)
@@ -358,6 +369,7 @@ class Orchestrator:
         response = await self.executor.execute(
             conversation_id=conversation_id,
             input_text=input_text,
+            image_attachments=image_refs if image_refs else None,
             instructions=self.system_instructions,
             event_callback=streaming_token_handler,
             tree_context=tree_context,
@@ -430,8 +442,8 @@ class Orchestrator:
         orchestrator.run() with a NEW conversation.
 
         Images (matplotlib figures) are handled with dual operation:
-        1. Saved to disk at XDG_DATA_HOME/sabre/files/{conversation_id}/ for serving
-        2. Markdown URLs appended to output_text for LLM to reference
+        1. Saved to disk at XDG_DATA_HOME/sabre/files/{conversation_id}/ for client serving
+        2. Markdown URLs sent to client via events (for display)
         3. ImageContent with base64 kept in content_list (for Files API upload)
 
         Args:
@@ -442,7 +454,7 @@ class Orchestrator:
 
         Returns:
             List of (output_text, content_list) tuples for each helper
-            - output_text: Includes markdown URLs for images
+            - output_text: Formatted output (without localhost URLs)
             - content_list: ImageContent objects (base64, later converted to file_id)
         """
         results = []
@@ -527,36 +539,32 @@ class Orchestrator:
                         saved_content.append(item)
 
                 # Format result using result prompts (adds context wrapper)
-                # Images skip formatting - they go directly as markdown URLs
                 has_images = len(image_urls) > 0
                 formatted_output, prompt_name_used = self._format_result(result.output, has_images)
 
-                # Build output text with image URLs for LLM
-                output_with_urls = formatted_output
-                if image_urls:
-                    output_with_urls += "\n\n" + "\n".join(
-                        f"![Figure {idx + 1}]({url})" for idx, url in enumerate(image_urls)
-                    )
+                # Output text for LLM (without localhost URLs - those are only for client display)
+                # Images will be referenced via file_id after upload
+                output_text_for_llm = formatted_output
 
                 # If result is very large (>10KB), save to file and reference by file_id
                 MAX_INLINE_CHARS = 10000  # 10KB threshold
-                if len(output_with_urls) > MAX_INLINE_CHARS:
-                    logger.info(f"Result is large ({len(output_with_urls)} chars), saving to file for LLM reference")
+                if len(output_text_for_llm) > MAX_INLINE_CHARS:
+                    logger.info(f"Result is large ({len(output_text_for_llm)} chars), saving to file for LLM reference")
                     # Save to file and upload to Files API
                     file_id = await self._save_large_result_to_file(
-                        output_with_urls, helper_tree_context["conversation_id"], i + 1
+                        output_text_for_llm, helper_tree_context["conversation_id"], i + 1
                     )
                     # Replace with file reference for LLM (show preview + file_id)
-                    output_with_urls = (
-                        f"[Large result ({len(output_with_urls)} chars) uploaded to file_id: {file_id}]\n\n"
-                        f"First 500 chars:\n{output_with_urls[:500]}\n\n"
+                    output_text_for_llm = (
+                        f"[Large result ({len(output_text_for_llm)} chars) uploaded to file_id: {file_id}]\n\n"
+                        f"First 500 chars:\n{output_text_for_llm[:500]}\n\n"
                         f"[...truncated...]\n\n"
-                        f"Last 500 chars:\n{output_with_urls[-500:]}\n\n"
+                        f"Last 500 chars:\n{output_text_for_llm[-500:]}\n\n"
                         f"The full content is available in the attached file."
                     )
 
-                # Store text with URLs for LLM, but keep original content for events
-                results.append((output_with_urls, saved_content))
+                # Store text for LLM (without localhost URLs), keep original content for events
+                results.append((output_text_for_llm, saved_content))
                 tree.pop(ExecutionStatus.COMPLETED)
                 logger.info(
                     f"Helper {i + 1} succeeded: {len(result.output)} chars, {len(result.content)} content items, {len(image_urls)} images saved"
@@ -862,7 +870,8 @@ class Orchestrator:
         # Generate URL (assumes server on localhost:8011 or PORT)
         port = os.getenv("PORT", "8011")
         url = f"http://localhost:{port}/files/{conversation_id}/{filename}"
-        logger.info(f"Saved image to {file_path}, accessible at {url}")
+        logger.info(f"💾 Saved image to: {file_path}")
+        logger.debug(f"   Accessible at: {url}")
 
         return url
 
@@ -896,11 +905,15 @@ class Orchestrator:
             file_obj = io.BytesIO(image_bytes)
             file_obj.name = f"image.{image_content.mime_type.split('/')[-1]}"  # e.g., "image.png"
 
-            # Upload to Files API
+            # Upload to Files API with 1-day expiration
             logger.info(f"Uploading image to OpenAI Files API ({len(image_bytes)} bytes)")
             file_response = await client.files.create(
                 file=file_obj,
                 purpose="assistants",  # Required purpose for file uploads
+                expires_after={
+                    "anchor": "created_at",  # Expire relative to creation time
+                    "seconds": 86400,  # Delete after 1 day (86400 seconds)
+                },
             )
 
             logger.info(f"Image uploaded successfully: {file_response.id}")
@@ -939,7 +952,7 @@ class Orchestrator:
         filename = f"helper_{helper_num}_result.txt"
         file_path = files_dir / filename
         file_path.write_text(content, encoding="utf-8")
-        logger.info(f"Saved large result to {file_path}")
+        logger.info(f"💾 Saved large result to: {file_path}")
 
         # Upload to Files API
         client = AsyncOpenAI(api_key=self.executor.api_key)
@@ -953,6 +966,10 @@ class Orchestrator:
             file_response = await client.files.create(
                 file=file_obj,
                 purpose="assistants",  # Required purpose for file uploads
+                expires_after={
+                    "anchor": "created_at",  # Expire relative to creation time
+                    "seconds": 86400,  # Delete after 1 day (86400 seconds)
+                },
             )
 
             logger.info(f"Large result uploaded successfully: {file_response.id}")
@@ -967,12 +984,14 @@ class Orchestrator:
         Ensure all images in results are uploaded to Files API.
 
         Converts ImageContent with base64 data to ImageContent with file_id.
+        Updates output text to mention file_id for LLM visibility.
 
         Args:
             results: List of (output_text, content_items) tuples
 
         Returns:
             Same structure but with file_id references instead of base64
+            and updated output_text mentioning the file_ids
         """
         from sabre.common.models.messages import ImageContent
 
@@ -980,6 +999,7 @@ class Orchestrator:
 
         for output_text, content_items in results:
             updated_content = []
+            file_id_mentions = []  # Track file_ids to append to output
 
             for item in content_items:
                 if isinstance(item, ImageContent) and not item.is_file_reference:
@@ -988,12 +1008,22 @@ class Orchestrator:
                         file_id = await self._upload_image_to_files_api(item)
                         # Create new ImageContent with file_id instead of base64
                         updated_content.append(ImageContent(file_id=file_id, mime_type=item.mime_type))
+                        file_id_mentions.append(file_id)
                         logger.info(f"Replaced base64 image with file reference: {file_id}")
                     except Exception as e:
                         logger.error(f"Failed to upload image, keeping base64: {e}")
                         updated_content.append(item)  # Keep original
                 else:
                     updated_content.append(item)
+
+            # Update output text to mention file_ids for LLM visibility
+            if file_id_mentions:
+                # Append file_id information to output text
+                file_id_info = "\n\n" + "\n".join(
+                    f"[Image {idx + 1} uploaded to file_id: {file_id}]" for idx, file_id in enumerate(file_id_mentions)
+                )
+                output_text += file_id_info
+                logger.info(f"Added {len(file_id_mentions)} file_id references to output text")
 
             updated_results.append((output_text, updated_content))
 

@@ -12,7 +12,7 @@ Persona-driven AI agent with:
 git clone https://github.com/raghotham/sabre
 cd sabre
 uv sync
-playwright install chromium
+uvx playwright install chromium --only-shell
 ```
 
 ## Environment Variables
@@ -32,14 +32,28 @@ playwright install chromium
 
 ## Commands
 
-```
+```bash
 # Open up Terminal UI
 OPENAI_API_KEY=$(cat ~/.openai/key) uv run sabre
 
 # Run as script
 OPENAI_API_KEY=$(cat ~/.openai/key) uv run sabre "message"
+
+# Stop the server
+uv run sabre --stop
+
+# Clean up all SABRE data (removes logs, files, cache)
+uv run sabre --clean
+uv run sabre --clean --force  # Skip confirmation
 ```
 
-```bash
-uv run sabre "message"
-```
+## Data Storage
+
+SABRE stores data in XDG-compliant directories:
+
+- **Data**: `~/.local/share/sabre/` - Generated files, conversation data
+- **State**: `~/.local/state/sabre/logs/` - Logs, PID files
+- **Config**: `~/.config/sabre/` - User configuration (future)
+- **Cache**: `~/.cache/sabre/` - Cache (future)
+
+Use `uv run sabre --clean` to remove all stored data.

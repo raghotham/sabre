@@ -140,6 +140,11 @@ class ResponseExecutor:
         """
         model = model or self.default_model
 
+        # Validate input_text is not empty
+        if not input_text or (isinstance(input_text, str) and not input_text.strip()):
+            logger.error(f"Empty input_text provided: {repr(input_text)}")
+            raise ValueError("input_text cannot be empty - Responses API requires non-empty input")
+
         # Build input - either simple text or structured content with images
         if image_attachments:
             # Structured input: text + images
@@ -169,6 +174,7 @@ class ResponseExecutor:
         else:
             # Simple text input
             api_input = input_text
+            logger.info(f"Sending simple text input: {len(input_text)} chars")
 
         # Build request params for Responses API
         # Always use conversation_id - each call adds a new turn
@@ -201,8 +207,19 @@ class ResponseExecutor:
         except Exception as e:
             logger.warning(f"Could not retrieve conversation state: {e}")
 
-        logger.info(f"Calling Responses API: conversation={conversation_id}, input={input_text[:50]}..., model={model}")
-        logger.info(f"Full input being sent: {input_text}")
+        # Truncate base64 data in logs (data:image/png;base64,...)
+        log_input = input_text
+        if len(log_input) > 500:
+            # Check for base64 image data and truncate it
+            log_input = re.sub(r"(data:image/[^;]+;base64,)[A-Za-z0-9+/=]{50,}", r"\1[base64 truncated]", log_input)
+
+        logger.info(
+            f"Calling Responses API: conversation={conversation_id}, input_preview={input_text[:50]}..., model={model}"
+        )
+        if len(log_input) <= 1000:
+            logger.debug(f"Full input: {log_input}")
+        else:
+            logger.debug(f"Input (truncated): {log_input[:1000]}...")
 
         # Retry loop for rate limit handling
         for attempt in range(max_retries):
