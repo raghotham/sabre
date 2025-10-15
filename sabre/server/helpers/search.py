@@ -5,7 +5,9 @@ Provides free web search without API keys.
 """
 
 import logging
-from typing import List, Dict
+from typing import List
+
+from sabre.common.models import SearchResult
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +19,7 @@ class Search:
     def web_search(
         query: str,
         total_links_to_return: int = 10,
-    ) -> List[Dict]:
+    ) -> List[SearchResult]:
         """
         Search the web using DuckDuckGo.
 
@@ -26,8 +28,9 @@ class Search:
             total_links_to_return: Max number of results to return
 
         Returns:
-            List of dicts with keys: title, link, snippet
+            List of SearchResult objects with url, title, snippet, engine
         """
+
         try:
             from ddgs import DDGS
         except ImportError:
@@ -43,14 +46,15 @@ class Search:
             ddgs = DDGS()
             results = list(ddgs.text(query, max_results=total_links_to_return))
 
-            return_results: List[Dict] = []
+            return_results: List[SearchResult] = []
             for result in results:
                 return_results.append(
-                    {
-                        "title": result.get("title", ""),
-                        "link": result.get("href", ""),
-                        "snippet": result.get("body", ""),
-                    }
+                    SearchResult(
+                        url=result.get("href", ""),
+                        title=result.get("title", ""),
+                        snippet=result.get("body", ""),
+                        engine="DuckDuckGo",
+                    )
                 )
 
             logger.info(f"Found {len(return_results)} results")
@@ -59,9 +63,9 @@ class Search:
             if return_results:
                 print(f"Search results for '{query}':")
                 for i, result in enumerate(return_results, 1):
-                    print(f"\n{i}. {result['title']}")
-                    print(f"   URL: {result['link']}")
-                    print(f"   {result['snippet'][:200]}...")
+                    print(f"\n{i}. {result.title}")
+                    print(f"   URL: {result.url}")
+                    print(f"   {result.snippet[:200]}...")
 
             return return_results
 

@@ -186,19 +186,28 @@ async def _download_async(urls_or_results: Any, max_urls: int = 10) -> list:
     # Handle different input types - extract URLs
     urls = []
 
+    # Import SearchResult to handle type checks
+    from sabre.common.models import SearchResult
+
     if isinstance(urls_or_results, str):
         # Single URL string
         urls = [urls_or_results]
+    elif isinstance(urls_or_results, SearchResult):
+        # Single SearchResult object
+        urls = [urls_or_results.url]
     elif isinstance(urls_or_results, list):
         # List of URLs or search results
         for item in urls_or_results:
             if isinstance(item, str):
                 urls.append(item)
+            elif isinstance(item, SearchResult):
+                # SearchResult object with .url attribute
+                urls.append(item.url)
             elif isinstance(item, dict) and "link" in item:
-                # Search result dict with 'link' key
+                # Search result dict with 'link' key (legacy support)
                 urls.append(item["link"])
             elif isinstance(item, dict) and "url" in item:
-                # Search result dict with 'url' key
+                # Search result dict with 'url' key (legacy support)
                 urls.append(item["url"])
 
     if not urls:
