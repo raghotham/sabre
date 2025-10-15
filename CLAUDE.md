@@ -18,6 +18,13 @@ uv run sabre-client    # Client only
 # Alternative commands
 uv run python -m sabre.server
 uv run python -m sabre.client
+
+# Stop server
+uv run sabre --stop
+
+# Clean up XDG directories (removes all data, logs, cache)
+uv run sabre --clean
+uv run sabre --clean --force  # Skip confirmation
 ```
 
 ### Dependencies

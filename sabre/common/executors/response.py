@@ -140,6 +140,11 @@ class ResponseExecutor:
         """
         model = model or self.default_model
 
+        # Validate input_text is not empty
+        if not input_text or (isinstance(input_text, str) and not input_text.strip()):
+            logger.error(f"Empty input_text provided: {repr(input_text)}")
+            raise ValueError("input_text cannot be empty - Responses API requires non-empty input")
+
         # Build input - either simple text or structured content with images
         if image_attachments:
             # Structured input: text + images
@@ -169,6 +174,7 @@ class ResponseExecutor:
         else:
             # Simple text input
             api_input = input_text
+            logger.info(f"Sending simple text input: {len(input_text)} chars")
 
         # Build request params for Responses API
         # Always use conversation_id - each call adds a new turn

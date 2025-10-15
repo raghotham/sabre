@@ -136,7 +136,8 @@ class Orchestrator:
             if not instructions:
                 raise ValueError("instructions required when creating new conversation (conversation_id is None)")
             conversation_id = await self._create_conversation_with_instructions(instructions, model)
-            logger.info(f"Created new conversation: {conversation_id}")
+            logger.info(f"✨ Created new conversation ID: {conversation_id}")
+            logger.info("📝 Conversation data stored on OpenAI servers (not locally)")
 
         iteration = 0
         current_response_id = None
@@ -260,6 +261,16 @@ class Orchestrator:
             logger.debug(f"Continuing with results: {response_with_results[:200]}...")
             if image_refs:
                 logger.info(f"Including {len(image_refs)} image file_id(s) in continuation")
+
+            # Validate continuation input is not empty
+            if not response_with_results or not response_with_results.strip():
+                logger.error(f"Empty continuation input generated! response_with_results={repr(response_with_results)}")
+                logger.error(f"execution_results had {len(execution_results)} items")
+                for idx, (out, items) in enumerate(execution_results):
+                    logger.error(f"  Result {idx}: output_text={repr(out[:200]) if out else 'EMPTY'}")
+                # Use a fallback message instead of empty string
+                response_with_results = "[Helper execution completed with empty result]"
+                logger.warning(f"Using fallback continuation message: {response_with_results}")
 
             # Mark response node as completed (had helpers, continuing)
             tree.pop(ExecutionStatus.COMPLETED)
@@ -859,7 +870,8 @@ class Orchestrator:
         # Generate URL (assumes server on localhost:8011 or PORT)
         port = os.getenv("PORT", "8011")
         url = f"http://localhost:{port}/files/{conversation_id}/{filename}"
-        logger.info(f"Saved image to {file_path}, accessible at {url}")
+        logger.info(f"💾 Saved image to: {file_path}")
+        logger.debug(f"   Accessible at: {url}")
 
         return url
 
@@ -940,7 +952,7 @@ class Orchestrator:
         filename = f"helper_{helper_num}_result.txt"
         file_path = files_dir / filename
         file_path.write_text(content, encoding="utf-8")
-        logger.info(f"Saved large result to {file_path}")
+        logger.info(f"💾 Saved large result to: {file_path}")
 
         # Upload to Files API
         client = AsyncOpenAI(api_key=self.executor.api_key)

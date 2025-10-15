@@ -48,7 +48,7 @@ class Client:
         # Create styled prompt session
         prompt_style = PromptStyle.from_dict(
             {
-                "": f"{self.tui.colors['user_input']} bg:ansigray",  # User input with gray background
+                "": f"{self.tui.colors['user_input']}",  # User input
             }
         )
 
