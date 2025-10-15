@@ -54,6 +54,28 @@ class TextContent(Content):
 
 
 @dataclass
+class SearchResult(TextContent):
+    """Search result with metadata"""
+
+    url: str = ""
+    title: str = ""
+    snippet: str = ""
+    engine: str = ""
+
+    def __init__(self, url: str = "", title: str = "", snippet: str = "", engine: str = ""):
+        # Use snippet as the text content
+        super().__init__(text=snippet)
+        self.url = url
+        self.title = title
+        self.snippet = snippet
+        self.engine = engine
+
+    def __repr__(self) -> str:
+        """Custom repr for better display"""
+        return f'SearchResult(url="{self.url}", title="{self.title}", snippet="{self.snippet[:50]}...", engine="{self.engine}")'
+
+
+@dataclass
 class ImageContent(Content):
     """
     Image content (base64, URL, or OpenAI file_id).
