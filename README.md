@@ -5,6 +5,7 @@
 Persona-driven AI agent with:
 - Recursive execution engine with error correction
 - OpenAI Conversastions API and Responses API for state management
+- Rewrite of [llmvm](https://github.com/9600dev/llmvm) using Conversations and Responses APIs
 
 ## Setup
 
