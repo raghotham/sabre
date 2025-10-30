@@ -168,12 +168,7 @@ class BrowserHelper:
             raise
         finally:
             if page:
-                logger.info("Closing page...")
-                try:
-                    await page.close()
-                    logger.info("Page closed successfully")
-                except Exception as close_err:
-                    logger.error(f"Error closing page: {close_err}")
+                await page.close()
 
     async def download_file(self, url: str, timeout: int = 30000) -> str:
         """

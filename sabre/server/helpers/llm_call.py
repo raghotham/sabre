@@ -72,29 +72,18 @@ def run_async_from_sync(coro: Coroutine[None, None, T], timeout: int = 300) -> T
     Returns:
         Result of the coroutine
     """
-    # Always create a new event loop to avoid deadlock with parent loop
-    # This is safe and simple - worker threads should have their own loop
-    logger.debug("run_async_from_sync: creating new event loop for coroutine execution")
+    logger.debug("Creating new event loop")
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        # Wrap with timeout to prevent infinite hangs
-        async def run_with_timeout():
-            return await asyncio.wait_for(coro, timeout=timeout)
-
-        try:
-            result = loop.run_until_complete(run_with_timeout())
-        except asyncio.TimeoutError:
-            logger.error(f"run_async_from_sync: operation timed out after {timeout}s")
-            raise TimeoutError(f"Operation timed out after {timeout} seconds")
-
-        # Clean up event loop resources
+        result = loop.run_until_complete(asyncio.wait_for(coro, timeout=timeout))
         _cleanup_event_loop(loop)
-
         return result
+    except asyncio.TimeoutError:
+        logger.error(f"Operation timed out after {timeout}s")
+        raise TimeoutError(f"Operation timed out after {timeout} seconds")
     finally:
         loop.close()
-        # Clear the event loop for this thread
         asyncio.set_event_loop(None)
 
 
