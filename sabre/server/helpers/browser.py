@@ -134,7 +134,7 @@ class BrowserHelper:
             logger.info(f"Taking screenshot of: {url}")
 
             page = await self.context.new_page()
-            await page.goto(url, wait_until="networkidle", timeout=timeout)
+            await page.goto(url, wait_until="load", timeout=timeout)
 
             screenshot_bytes = await page.screenshot(full_page=True)
 

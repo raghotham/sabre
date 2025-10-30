@@ -165,7 +165,7 @@ class ResponseExecutor:
                         )
 
             # Wrap in message type for Responses API
-            api_input = [{"type": "message", "content": message_content}]
+            api_input = [{"type": "message", "role": "user", "content": message_content}]
 
             # Count file refs vs base64 for logging
             file_refs = sum(1 for img in image_attachments if isinstance(img, ImageContent) and img.is_file_reference)
