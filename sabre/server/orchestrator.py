@@ -96,6 +96,7 @@ class Orchestrator:
         self.runtime = python_runtime
         self.max_iterations = max_iterations
         self.system_instructions = None  # Stored after conversation creation
+        self._shared_openai_client = None  # Lazy-initialized fallback client
 
         # CRITICAL: Wire runtime back to orchestrator for recursive llm_call()
         self.runtime.set_orchestrator(self)
@@ -742,6 +743,27 @@ class Orchestrator:
         if callback:
             await callback(CompleteEvent(**tree_context, final_message=final_message))
 
+    def _get_openai_client(self):
+        """
+        Retrieve a shared AsyncOpenAI client configured like the executor.
+
+        Prefers the executor's client (which already respects api key/base URL),
+        falling back to a lazily-created instance if necessary.
+        """
+        client = getattr(self.executor, "client", None)
+        if client is not None:
+            return client
+
+        if self._shared_openai_client is None:
+            from openai import AsyncOpenAI
+
+            client_kwargs = {"api_key": self.executor.api_key}
+            if getattr(self.executor, "base_url", None):
+                client_kwargs["base_url"] = self.executor.base_url
+            self._shared_openai_client = AsyncOpenAI(**client_kwargs)
+
+        return self._shared_openai_client
+
     # ============================================================
     # CONVERSATION MANAGEMENT
     # ============================================================
@@ -791,10 +813,7 @@ class Orchestrator:
         Returns:
             Conversation ID
         """
-        from openai import AsyncOpenAI
-
-        # Create OpenAI client
-        client = AsyncOpenAI()
+        client = self._get_openai_client()
 
         # Create conversation
         conversation = await client.conversations.create(metadata={"session_type": "orchestrator_managed"})
@@ -810,7 +829,7 @@ class Orchestrator:
         # NOTE: Instructions must be sent on EVERY response.create() call
         try:
             await client.responses.create(
-                model=model or "gpt-4o",
+                model=model or self.executor.default_model,
                 conversation=conversation.id,
                 instructions=instructions,  # System instructions
                 input="Are you ready?",
@@ -893,9 +912,7 @@ class Orchestrator:
         """
         import base64
         import io
-        from openai import AsyncOpenAI
-
-        client = AsyncOpenAI(api_key=self.executor.api_key)
+        client = self._get_openai_client()
 
         try:
             # Decode base64 to bytes
@@ -943,7 +960,6 @@ class Orchestrator:
         """
         from sabre.common.paths import get_files_dir
         import io
-        from openai import AsyncOpenAI
 
         # Save to disk first
         files_dir = get_files_dir(conversation_id)
@@ -955,7 +971,7 @@ class Orchestrator:
         logger.info(f"💾 Saved large result to: {file_path}")
 
         # Upload to Files API
-        client = AsyncOpenAI(api_key=self.executor.api_key)
+        client = self._get_openai_client()
 
         try:
             # Create file-like object from content
