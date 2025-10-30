@@ -11,6 +11,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, TYPE_CHECKING
 
+import httpx
 import pandas as pd
 
 from sabre.server.helpers.bash import Bash
@@ -175,12 +176,23 @@ class PythonRuntime:
 
             api_key = os.getenv("OPENAI_API_KEY")
             base_url = os.getenv("OPENAI_BASE_URL")
+            skip_ssl = os.getenv("OPENAI_SKIP_SSL_VERIFY", "").lower() in ("true", "1", "yes")
 
+            # Create httpx client with SSL settings
+            http_client = None
+            if skip_ssl:
+                logger.warning("⚠️  SSL certificate verification is DISABLED - use only for testing!")
+                http_client = httpx.AsyncClient(verify=False)
+
+            # Create client with optional base_url and http_client
+            client_kwargs = {"api_key": api_key}
             if base_url:
                 logger.info(f"Creating OpenAI client with custom base URL: {base_url}")
-                self.openai_client = AsyncOpenAI(api_key=api_key, base_url=base_url)
-            else:
-                self.openai_client = AsyncOpenAI(api_key=api_key)
+                client_kwargs["base_url"] = base_url
+            if http_client:
+                client_kwargs["http_client"] = http_client
+
+            self.openai_client = AsyncOpenAI(**client_kwargs)
 
         return self.openai_client
 

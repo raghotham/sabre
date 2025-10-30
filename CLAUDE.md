@@ -62,6 +62,7 @@ OPENAI_API_KEY="sk-..."
 # Optional
 OPENAI_BASE_URL="https://api.openai.com/v1"  # For custom endpoints
 OPENAI_MODEL="gpt-4o"                        # Override default model
+OPENAI_SKIP_SSL_VERIFY="true"                # Skip SSL cert verification (testing only!)
 PORT="8011"                                   # Server port (default: 8011)
 
 # XDG directories (for testing)
