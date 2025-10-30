@@ -6,6 +6,7 @@ from .help import HelpCommand
 from .clear import ClearCommand
 from .exit import ExitCommand, QuitCommand
 from .helpers import HelpersCommand
+from .theme import ThemeCommand
 
 
 class SlashCommandHandler:
@@ -26,6 +27,7 @@ class SlashCommandHandler:
             ExitCommand(self.client),
             QuitCommand(self.client),
             HelpersCommand(self.client),
+            ThemeCommand(self.client),
         ]
 
         for cmd in commands:
