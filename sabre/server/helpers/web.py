@@ -134,7 +134,7 @@ def download_csv(url: str) -> str:
         raise
 
 
-def download(urls_or_results: Any, max_urls: int = 10) -> list:
+def download(urls_or_results: Any, max_urls: int = 10, timeout: int = 60) -> list:
     """
     Download web content as screenshots or files.
 
@@ -150,6 +150,7 @@ def download(urls_or_results: Any, max_urls: int = 10) -> list:
     Args:
         urls_or_results: URL string, list of URLs, or list of search result dicts
         max_urls: Maximum number of URLs to download (default 10)
+        timeout: Timeout in seconds for the entire download operation (default 60)
 
     Returns:
         list[Content]: List of ImageContent (screenshots) or TextContent (files)
@@ -168,15 +169,20 @@ def download(urls_or_results: Any, max_urls: int = 10) -> list:
     """
     from sabre.server.helpers.llm_call import run_async_from_sync
 
-    # Run async implementation
-    return run_async_from_sync(_download_async(urls_or_results, max_urls))
+    # Run async implementation with timeout
+    return run_async_from_sync(_download_async(urls_or_results, max_urls), timeout=timeout)
 
 
-async def _download_async(urls_or_results: Any, max_urls: int = 10) -> list:
+async def _download_async(urls_or_results: Any, max_urls: int = 10, timeout_per_url: int = 60) -> list:
     """
     Async implementation of download().
 
     This is the actual implementation that handles async browser operations properly.
+
+    Args:
+        urls_or_results: URLs to download
+        max_urls: Maximum number of URLs
+        timeout_per_url: Timeout per URL in seconds (default 60)
     """
     import base64
     from sabre.common.models.messages import Content, ImageContent, TextContent
@@ -281,7 +287,10 @@ async def _download_async(urls_or_results: Any, max_urls: int = 10) -> list:
                 logger.info(f"Taking screenshot: {url}")
                 # Get browser instance and take screenshot (properly async)
                 browser = await _get_browser()
-                screenshot_bytes = await browser.screenshot(url)
+                screenshot_bytes = await browser.screenshot(
+                    url,
+                    timeout=int(timeout_per_url * 1000),
+                )
 
                 # Convert to base64
                 screenshot_b64 = base64.b64encode(screenshot_bytes).decode("utf-8")

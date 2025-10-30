@@ -15,12 +15,55 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
+def _cleanup_event_loop(loop: asyncio.AbstractEventLoop) -> None:
+    """
+    Clean up event loop resources: browser instances, pending tasks, async generators.
+
+    Args:
+        loop: Event loop to clean up
+    """
+    loop_id = id(loop)
+
+    # 1. Clean up browser instance for this loop (if exists)
+    try:
+        from sabre.server.helpers.browser import BrowserHelper
+        if loop_id in BrowserHelper._instances:
+            logger.debug(f"Cleaning up browser for loop {loop_id}")
+            browser = BrowserHelper._instances.pop(loop_id)
+            loop.run_until_complete(asyncio.wait_for(browser._cleanup(), timeout=10.0))
+    except asyncio.TimeoutError:
+        logger.warning("Browser cleanup timed out")
+    except Exception as e:
+        logger.warning(f"Error cleaning up browser: {e}")
+
+    # 2. Cancel all pending tasks
+    pending = asyncio.all_tasks(loop)
+    if pending:
+        logger.debug(f"Cancelling {len(pending)} pending tasks")
+        for task in pending:
+            task.cancel()
+        try:
+            loop.run_until_complete(asyncio.wait_for(
+                asyncio.gather(*pending, return_exceptions=True),
+                timeout=5.0
+            ))
+        except asyncio.TimeoutError:
+            logger.warning("Task cancellation timed out")
+
+    # 3. Shutdown async generators
+    try:
+        loop.run_until_complete(asyncio.wait_for(loop.shutdown_asyncgens(), timeout=5.0))
+    except asyncio.TimeoutError:
+        logger.warning("Async generator shutdown timed out")
+
+
 def run_async_from_sync(coro: Coroutine[None, None, T], timeout: int = 300) -> T:
     """
     Run an async coroutine from synchronous code.
 
-    Handles the case where we're already inside an event loop (uses thread)
-    or outside one (creates new loop).
+    Always creates a new event loop to avoid deadlocks when called from
+    worker threads (e.g., via asyncio.to_thread). Using run_coroutine_threadsafe
+    would cause a deadlock: parent loop waits for thread, thread waits for parent loop.
 
     Args:
         coro: Coroutine to run
@@ -29,25 +72,30 @@ def run_async_from_sync(coro: Coroutine[None, None, T], timeout: int = 300) -> T
     Returns:
         Result of the coroutine
     """
+    # Always create a new event loop to avoid deadlock with parent loop
+    # This is safe and simple - worker threads should have their own loop
+    logger.debug("run_async_from_sync: creating new event loop for coroutine execution")
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
-        loop = asyncio.get_running_loop()
-        # We're inside an async context - use thread-safe execution
-        future = asyncio.run_coroutine_threadsafe(coro, loop)
-        return future.result(timeout=timeout)
-    except RuntimeError:
-        # No running loop - create a new one
-        loop = asyncio.new_event_loop()
+        # Wrap with timeout to prevent infinite hangs
+        async def run_with_timeout():
+            return await asyncio.wait_for(coro, timeout=timeout)
+
         try:
-            result = loop.run_until_complete(coro)
-            # Properly cleanup async generators and pending tasks
-            loop.run_until_complete(loop.shutdown_asyncgens())
-            # Give pending tasks a chance to cleanup
-            pending = asyncio.all_tasks(loop)
-            if pending:
-                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-            return result
-        finally:
-            loop.close()
+            result = loop.run_until_complete(run_with_timeout())
+        except asyncio.TimeoutError:
+            logger.error(f"run_async_from_sync: operation timed out after {timeout}s")
+            raise TimeoutError(f"Operation timed out after {timeout} seconds")
+
+        # Clean up event loop resources
+        _cleanup_event_loop(loop)
+
+        return result
+    finally:
+        loop.close()
+        # Clear the event loop for this thread
+        asyncio.set_event_loop(None)
 
 
 class LLMCall:
