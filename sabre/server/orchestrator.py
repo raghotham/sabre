@@ -18,9 +18,11 @@ Organization:
 """
 
 import asyncio
+import os
 import re
 import logging
 import time
+import httpx
 import openai
 from typing import Callable, Awaitable, TYPE_CHECKING
 from dataclasses import dataclass
@@ -757,9 +759,20 @@ class Orchestrator:
         if self._shared_openai_client is None:
             from openai import AsyncOpenAI
 
+            skip_ssl = os.getenv("OPENAI_SKIP_SSL_VERIFY", "").lower() in ("true", "1", "yes")
+
+            # Create httpx client with SSL settings
+            http_client = None
+            if skip_ssl:
+                logger.warning("⚠️  SSL certificate verification is DISABLED - use only for testing!")
+                http_client = httpx.AsyncClient(verify=False)
+
             client_kwargs = {"api_key": self.executor.api_key}
             if getattr(self.executor, "base_url", None):
                 client_kwargs["base_url"] = self.executor.base_url
+            if http_client:
+                client_kwargs["http_client"] = http_client
+
             self._shared_openai_client = AsyncOpenAI(**client_kwargs)
 
         return self._shared_openai_client
@@ -912,6 +925,7 @@ class Orchestrator:
         """
         import base64
         import io
+
         client = self._get_openai_client()
 
         try:

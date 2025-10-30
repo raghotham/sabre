@@ -17,6 +17,7 @@ import asyncio
 from typing import Callable, Awaitable
 from openai import AsyncOpenAI
 import openai
+import httpx
 import logging
 
 from sabre.common.models import (
@@ -58,12 +59,24 @@ class ResponseExecutor:
         # Get default model from env if not provided
         self.default_model = os.getenv("OPENAI_MODEL") or default_model
 
-        # Create client with optional base_url
+        # Check if we should skip SSL verification
+        skip_ssl = os.getenv("OPENAI_SKIP_SSL_VERIFY", "").lower() in ("true", "1", "yes")
+
+        # Create httpx client with SSL settings
+        http_client = None
+        if skip_ssl:
+            logger.warning("⚠️  SSL certificate verification is DISABLED - use only for testing!")
+            http_client = httpx.AsyncClient(verify=False)
+
+        # Create client with optional base_url and http_client
+        client_kwargs = {"api_key": self.api_key}
         if self.base_url:
             logger.info(f"Using custom OpenAI base URL: {self.base_url}")
-            self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
-        else:
-            self.client = AsyncOpenAI(api_key=self.api_key)
+            client_kwargs["base_url"] = self.base_url
+        if http_client:
+            client_kwargs["http_client"] = http_client
+
+        self.client = AsyncOpenAI(**client_kwargs)
 
         logger.info(f"Initialized ResponseExecutor with model: {self.default_model}")
 
@@ -196,11 +209,15 @@ class ResponseExecutor:
         try:
             from openai import AsyncOpenAI
 
-            temp_client = (
-                AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
-                if self.base_url
-                else AsyncOpenAI(api_key=self.api_key)
-            )
+            # Use same http_client as main client (to respect SSL settings)
+            temp_client_kwargs = {"api_key": self.api_key}
+            if self.base_url:
+                temp_client_kwargs["base_url"] = self.base_url
+            if hasattr(self.client, "_client") and hasattr(self.client._client, "_transport"):
+                # Reuse the same httpx client to maintain SSL settings
+                temp_client_kwargs["http_client"] = self.client._client
+
+            temp_client = AsyncOpenAI(**temp_client_kwargs)
             conv = await temp_client.conversations.retrieve(conversation_id)
             num_turns = len(conv.turns) if hasattr(conv, "turns") else "unknown"
             logger.info(f"Conversation {conversation_id} has {num_turns} turns before this call")
