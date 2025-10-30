@@ -743,10 +743,6 @@ class Orchestrator:
         if callback:
             await callback(CompleteEvent(**tree_context, final_message=final_message))
 
-    # ============================================================
-    # CONVERSATION MANAGEMENT
-    # ============================================================
-
     def _get_openai_client(self):
         """
         Retrieve a shared AsyncOpenAI client configured like the executor.
@@ -767,6 +763,10 @@ class Orchestrator:
             self._shared_openai_client = AsyncOpenAI(**client_kwargs)
 
         return self._shared_openai_client
+
+    # ============================================================
+    # CONVERSATION MANAGEMENT
+    # ============================================================
 
     def load_default_instructions(self) -> str:
         """
