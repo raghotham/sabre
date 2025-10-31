@@ -1,7 +1,7 @@
 """
 Terminal UI utilities for SABRE client.
 
-Handles theme detection, color management, and all rendering logic.
+Handles theme management, color rendering, and all display logic.
 """
 
 import logging
@@ -44,242 +44,33 @@ COLORS = {
 
 
 class TUI:
-    """Terminal User Interface - handles theme detection and color rendering."""
+    """Terminal User Interface - handles theme management and color rendering."""
 
     def __init__(self):
-        """Initialize TUI with auto-detected theme."""
-        self.theme = self._detect_theme()
+        """Initialize TUI with dark theme (default)."""
+        self.theme = "dark"  # Default to dark
         self.colors = COLORS[self.theme]
-        self.detection_method = None  # Track which detection method succeeded
 
-    # ==================== Theme Detection ====================
+    # ==================== Theme Management ====================
 
-    def _detect_theme(self) -> str:
+    def set_theme(self, theme: str):
         """
-        Detect terminal theme (light/dark) using multiple methods.
+        Set the theme (light or dark).
 
-        Tries methods in order of reliability:
-        0. SABRE_THEME environment variable (manual override)
-        1. OSC 11 query (actual background color)
-        2. COLORFGBG environment variable
-        3. iTerm2 profile name
-        4. OS dark mode
-        5. Default to "dark"
-
-        Returns:
-            str: "light" or "dark"
+        Args:
+            theme: "light" or "dark"
         """
-        # Check for manual override first
-        sabre_theme = os.getenv("SABRE_THEME", "").lower()
-        if sabre_theme in ("light", "dark"):
-            self.detection_method = "SABRE_THEME env var"
-            logger.info(f"Using manual theme override: {sabre_theme}")
-            return sabre_theme
+        if theme not in ("light", "dark"):
+            raise ValueError(f"Invalid theme: {theme}. Must be 'light' or 'dark'")
+        self.theme = theme
+        self.colors = COLORS[theme]
+        logger.info(f"Theme set to: {theme}")
 
-        # Try OSC 11 query first (most accurate)
-        theme = self._query_background_color()
-        if theme:
-            self.detection_method = "OSC 11 query"
-            return theme
-
-        # Try COLORFGBG
-        theme = self._check_colorfgbg()
-        if theme:
-            self.detection_method = "COLORFGBG"
-            return theme
-
-        # Try iTerm2 profile
-        theme = self._check_iterm_profile()
-        if theme:
-            self.detection_method = "iTerm profile"
-            return theme
-
-        # Try OS dark mode
-        theme = self._check_os_dark_mode()
-        if theme:
-            self.detection_method = "OS dark mode"
-            return theme
-
-        # Default
-        self.detection_method = "default"
-        return "dark"
-
-    def _query_background_color(self) -> str | None:
-        """
-        Query terminal background color using OSC 11 escape sequence.
-
-        Works on: xterm, iTerm2, Alacritty, WezTerm, VTE-based terminals
-
-        Returns:
-            str | None: "light" or "dark" if successful, None otherwise
-        """
-        # Only works on TTY
-        if not sys.stdin.isatty() or not sys.stdout.isatty():
-            return None
-
-        try:
-            import select
-            import termios
-            import tty
-
-            # Save terminal settings
-            old_settings = termios.tcgetattr(sys.stdin)
-
-            try:
-                # Set terminal to raw mode
-                tty.setcbreak(sys.stdin.fileno())
-
-                # Query background color with OSC 11
-                sys.stdout.write("\033]11;?\033\\")
-                sys.stdout.flush()
-
-                # Read response with timeout (100ms)
-                response = ""
-                start_time = __import__("time").time()
-                while True:
-                    # Check for timeout (100ms)
-                    if __import__("time").time() - start_time > 0.1:
-                        break
-
-                    # Check if data available
-                    if select.select([sys.stdin], [], [], 0.01)[0]:
-                        char = sys.stdin.read(1)
-                        response += char
-
-                        # Look for terminator (BEL or ST)
-                        if char == "\a" or response.endswith("\033\\"):
-                            break
-
-                # Restore terminal settings
-                termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-
-                # Parse response format: \e]11;rgb:RRRR/GGGG/BBBB\a
-                if "rgb:" in response:
-                    import re
-
-                    match = re.search(r"rgb:([0-9a-f]+)/([0-9a-f]+)/([0-9a-f]+)", response, re.IGNORECASE)
-                    if match:
-                        # Parse hex values (can be 2, 4, or 8 digits)
-                        r_hex, g_hex, b_hex = match.groups()
-
-                        # Normalize to 0-255 range
-                        r = int(r_hex[:2], 16) if len(r_hex) >= 2 else int(r_hex, 16) * 17
-                        g = int(g_hex[:2], 16) if len(g_hex) >= 2 else int(g_hex, 16) * 17
-                        b = int(b_hex[:2], 16) if len(b_hex) >= 2 else int(b_hex, 16) * 17
-
-                        # Calculate relative luminance (ITU-R BT.709)
-                        luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0
-
-                        # Determine light vs dark
-                        if luminance > 0.5:
-                            logger.info(f"OSC 11 detected light background (luminance={luminance:.2f})")
-                            return "light"
-                        else:
-                            logger.info(f"OSC 11 detected dark background (luminance={luminance:.2f})")
-                            return "dark"
-            except Exception as e:
-                # Restore terminal on error
-                try:
-                    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-                except:
-                    pass
-                logger.debug(f"OSC 11 query failed: {e}")
-                return None
-        except Exception as e:
-            logger.debug(f"OSC 11 query not available: {e}")
-            return None
-
-    def _check_colorfgbg(self) -> str | None:
-        """
-        Check COLORFGBG environment variable.
-
-        Format: "foreground;background" where bg 0-7 = dark, 8-15 = light
-        Works on: gnome-terminal, konsole, mlterm, mrxvt
-
-        Returns:
-            str | None: "light" or "dark" if set, None otherwise
-        """
-        colorfgbg = os.getenv("COLORFGBG", "")
-        if colorfgbg:
-            parts = colorfgbg.split(";")
-            if len(parts) >= 2:
-                try:
-                    bg = int(parts[-1])
-                    # Background colors 0-7 are dark, 8-15 are light
-                    if bg >= 8:
-                        logger.info(f"COLORFGBG detected light background (bg={bg})")
-                        return "light"
-                    else:
-                        logger.info(f"COLORFGBG detected dark background (bg={bg})")
-                        return "dark"
-                except ValueError:
-                    pass
-        return None
-
-    def _check_iterm_profile(self) -> str | None:
-        """
-        Check iTerm2 profile name for theme hint.
-
-        Works on: iTerm2
-
-        Returns:
-            str | None: "light" or "dark" if profile name contains hint, None otherwise
-        """
-        iterm_profile = os.getenv("ITERM_PROFILE", "").lower()
-        if "light" in iterm_profile:
-            logger.info(f"iTerm profile detected light theme: {iterm_profile}")
-            return "light"
-        elif "dark" in iterm_profile:
-            logger.info(f"iTerm profile detected dark theme: {iterm_profile}")
-            return "dark"
-        return None
-
-    def _check_os_dark_mode(self) -> str | None:
-        """
-        Check OS-level dark mode preference.
-
-        Works on: macOS (via defaults command)
-
-        Returns:
-            str | None: "light" or "dark" if OS preference set, None otherwise
-        """
-        import subprocess
-        import platform
-
-        if platform.system() == "Darwin":  # macOS
-            try:
-                result = subprocess.run(
-                    ["defaults", "read", "-g", "AppleInterfaceStyle"], capture_output=True, text=True, timeout=1
-                )
-                if result.returncode == 0 and "dark" in result.stdout.lower():
-                    logger.info("macOS dark mode detected")
-                    return "dark"
-                else:
-                    logger.info("macOS light mode detected")
-                    return "light"
-            except Exception as e:
-                logger.debug(f"OS dark mode check failed: {e}")
-
-        return None
-
-    def get_terminal_info(self) -> dict:
-        """
-        Get detailed terminal information for debugging.
-
-        Returns:
-            dict: Terminal details including detection method
-        """
-        import shutil
-
-        return {
-            "term_program": os.getenv("TERM_PROGRAM", "unknown"),
-            "term": os.getenv("TERM", "unknown"),
-            "size": shutil.get_terminal_size(),
-            "colorfgbg": os.getenv("COLORFGBG", "not set"),
-            "iterm_profile": os.getenv("ITERM_PROFILE", "not set"),
-            "detected_theme": self.theme,
-            "detection_method": self.detection_method,
-        }
+    def toggle_theme(self):
+        """Toggle between light and dark theme."""
+        new_theme = "light" if self.theme == "dark" else "dark"
+        self.set_theme(new_theme)
+        return new_theme
 
     # ==================== Rendering Methods ====================
 

@@ -36,7 +36,7 @@ class Client:
             log_dir = get_logs_dir()
             history_file = str(log_dir / "history")
 
-        # Initialize TUI (auto-detects theme)
+        # Initialize TUI (defaults to dark theme)
         self.tui = TUI()
 
         # Track if we're processing a message (for cancellation)
@@ -562,7 +562,7 @@ async def main():
     # Get server URL
     server_url = f"http://localhost:{args.port}"
 
-    # Create client (theme auto-detected by TUI)
+    # Create client (use /theme to toggle light/dark mode)
     client = Client(server_url=server_url)
 
     # If message provided, run in non-interactive mode
