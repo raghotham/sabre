@@ -159,35 +159,33 @@ class ResponseExecutor:
             raise ValueError("input_text cannot be empty - Responses API requires non-empty input")
 
         # Build input - either simple text or structured content with images
+        from sabre.common.models.messages import ImageContent
+
+        message_content = [{"type": "input_text", "text": input_text}]
+        file_refs = 0
+        base64_imgs = 0
+
         if image_attachments:
-            # Structured input: text + images
-            # Responses API requires wrapping in "message" type
-            from sabre.common.models.messages import ImageContent
-
-            message_content = [{"type": "text", "text": input_text}]
-
             for img in image_attachments:
                 if isinstance(img, ImageContent):
                     if img.is_file_reference:
-                        # Format as file reference (minimal token usage)
-                        message_content.append({"type": "file", "file_id": img.file_id})
+                        message_content.append({"type": "input_file", "file_id": img.file_id})
+                        file_refs += 1
                     else:
-                        # Format as base64 image_url
                         message_content.append(
-                            {"type": "image_url", "image_url": {"url": f"data:{img.mime_type};base64,{img.image_data}"}}
+                            {
+                                "type": "input_image",
+                                "image_url": {"url": f"data:{img.mime_type};base64,{img.image_data}"},
+                            }
                         )
+                        base64_imgs += 1
 
-            # Wrap in message type for Responses API
-            api_input = [{"type": "message", "role": "user", "content": message_content}]
-
-            # Count file refs vs base64 for logging
-            file_refs = sum(1 for img in image_attachments if isinstance(img, ImageContent) and img.is_file_reference)
-            base64_imgs = len(image_attachments) - file_refs
             logger.info(f"Sending structured input: 1 text + {file_refs} file_id refs + {base64_imgs} base64 images")
         else:
-            # Simple text input
-            api_input = input_text
             logger.info(f"Sending simple text input: {len(input_text)} chars")
+
+        # Wrap in message type for Responses API
+        api_input = [{"type": "message", "role": "user", "content": message_content}]
 
         # Build request params for Responses API
         # Always use conversation_id - each call adds a new turn
