@@ -5,6 +5,7 @@ Uses Python's contextvars to pass execution context from orchestrator to helpers
 in a clean, type-safe, async-aware way.
 """
 
+import asyncio
 from contextvars import ContextVar
 from typing import Callable, Awaitable, Optional, TYPE_CHECKING
 from dataclasses import dataclass
@@ -25,6 +26,7 @@ class ExecutionContext:
     tree: Optional["ExecutionTree"]
     tree_context: dict
     conversation_id: str
+    loop: Optional[asyncio.AbstractEventLoop] = None
 
 
 # Context variable (async-safe, thread-aware)
@@ -48,6 +50,7 @@ def set_execution_context(
     tree: Optional["ExecutionTree"],
     tree_context: dict,
     conversation_id: str,
+    loop: Optional[asyncio.AbstractEventLoop] = None,
 ) -> None:
     """
     Set execution context for current async task.
@@ -57,9 +60,14 @@ def set_execution_context(
         tree: Execution tree for tracking
         tree_context: Tree context metadata
         conversation_id: OpenAI conversation ID
+        loop: Event loop that should run async helper coroutines
     """
     ctx = ExecutionContext(
-        event_callback=event_callback, tree=tree, tree_context=tree_context, conversation_id=conversation_id
+        event_callback=event_callback,
+        tree=tree,
+        tree_context=tree_context,
+        conversation_id=conversation_id,
+        loop=loop,
     )
     _execution_context_var.set(ctx)
 

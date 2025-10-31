@@ -6,6 +6,7 @@ Allows code to recursively call the LLM with new context.
 
 import asyncio
 import logging
+from concurrent.futures import Future
 from typing import Callable, Coroutine, TypeVar
 
 from sabre.common.utils.prompt_loader import PromptLoader
@@ -19,8 +20,8 @@ def run_async_from_sync(coro: Coroutine[None, None, T], timeout: int = 300) -> T
     """
     Run an async coroutine from synchronous code.
 
-    Handles the case where we're already inside an event loop (uses thread)
-    or outside one (creates new loop).
+    Prefers scheduling on the orchestrator's existing event loop (captured
+    via execution context) so helpers don't spin up ad-hoc loops.
 
     Args:
         coro: Coroutine to run
@@ -29,25 +30,52 @@ def run_async_from_sync(coro: Coroutine[None, None, T], timeout: int = 300) -> T
     Returns:
         Result of the coroutine
     """
+    # If we're somehow already on an event loop (shouldn't happen for sync helpers),
+    # fail fast to avoid deadlocks.
     try:
-        loop = asyncio.get_running_loop()
-        # We're inside an async context - use thread-safe execution
-        future = asyncio.run_coroutine_threadsafe(coro, loop)
-        return future.result(timeout=timeout)
+        running_loop = asyncio.get_running_loop()
     except RuntimeError:
-        # No running loop - create a new one
-        loop = asyncio.new_event_loop()
-        try:
-            result = loop.run_until_complete(coro)
-            # Properly cleanup async generators and pending tasks
-            loop.run_until_complete(loop.shutdown_asyncgens())
-            # Give pending tasks a chance to cleanup
-            pending = asyncio.all_tasks(loop)
-            if pending:
-                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-            return result
-        finally:
-            loop.close()
+        running_loop = None
+    else:
+        msg = "run_async_from_sync() cannot be called from within a running event loop"
+        logger.error(msg)
+        raise RuntimeError(msg)
+
+    from sabre.common.execution_context import get_execution_context
+
+    ctx = get_execution_context()
+    target_loop = ctx.loop if ctx else None
+
+    if target_loop and target_loop.is_running():
+        thread_future: Future[T] = Future()
+
+        def _schedule():
+            async def runner():
+                try:
+                    result = await asyncio.wait_for(coro, timeout=timeout)
+                except Exception as exc:  # noqa: BLE001
+                    thread_future.set_exception(exc)
+                else:
+                    thread_future.set_result(result)
+
+            target_loop.create_task(runner())
+
+        target_loop.call_soon_threadsafe(_schedule)
+        return thread_future.result(timeout=timeout + 5)
+
+    # Fallback: no orchestrator loop available (e.g., called in isolation)
+    loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(asyncio.wait_for(coro, timeout=timeout))
+        return result
+    finally:
+        asyncio.set_event_loop(None)
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        pending = asyncio.all_tasks(loop)
+        if pending:
+            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+        loop.close()
 
 
 class LLMCall:

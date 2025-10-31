@@ -12,24 +12,17 @@ import logging
 import re
 import unicodedata
 import warnings
-from typing import Any, Optional
+from typing import Any
 from markdownify import MarkdownConverter
 from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 
 logger = logging.getLogger(__name__)
 
-# Lazy import of BrowserHelper to avoid startup overhead
-_browser_helper: Optional[Any] = None
-
-
 async def _get_browser():
-    """Get or create browser helper instance (lazy loading)."""
-    global _browser_helper
-    if _browser_helper is None:
-        from sabre.server.helpers.browser import BrowserHelper
+    """Get the browser helper instance for the current event loop."""
+    from sabre.server.helpers.browser import BrowserHelper
 
-        _browser_helper = await BrowserHelper.get_instance()
-    return _browser_helper
+    return await BrowserHelper.get_instance()
 
 
 def _clean_markdown(markdown_text: str) -> str:
