@@ -485,11 +485,13 @@ class Orchestrator:
             # Set execution context for helpers (like coerce) to access
             from sabre.common.execution_context import set_execution_context, clear_execution_context
 
+            current_loop = asyncio.get_running_loop()
             set_execution_context(
                 event_callback=event_callback,
                 tree=tree,
                 tree_context=helper_tree_context,
                 conversation_id=helper_tree_context["conversation_id"],
+                loop=current_loop,
             )
 
             try:

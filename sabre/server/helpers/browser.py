@@ -19,8 +19,8 @@ class BrowserHelper:
     Singleton pattern - reuses browser instance across requests for performance.
     """
 
-    _instance: Optional["BrowserHelper"] = None
-    _lock = asyncio.Lock()
+    _instances: dict[int, "BrowserHelper"] = {}
+    _init_locks: dict[int, asyncio.Lock] = {}
 
     def __init__(self):
         """Initialize browser helper (use get_instance() instead)."""
@@ -28,20 +28,48 @@ class BrowserHelper:
         self.browser: Optional[Browser] = None
         self.context: Optional[BrowserContext] = None
         self._initialized = False
+        self._owning_loop_id: Optional[int] = None
 
     @classmethod
     async def get_instance(cls) -> "BrowserHelper":
         """
-        Get or create singleton browser instance.
+        Get or create browser instance scoped to the current event loop.
 
         Returns:
             BrowserHelper instance
         """
-        async with cls._lock:
-            if cls._instance is None:
-                cls._instance = BrowserHelper()
-                await cls._instance._initialize()
-            return cls._instance
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            logger.error("BrowserHelper.get_instance() requires a running event loop")
+            raise
+
+        loop_id = id(loop)
+
+        instance = cls._instances.get(loop_id)
+        if instance and instance._initialized:
+            return instance
+
+        lock = cls._init_locks.get(loop_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            cls._init_locks[loop_id] = lock
+
+        async with lock:
+            instance = cls._instances.get(loop_id)
+            if instance is None:
+                instance = BrowserHelper()
+                instance._owning_loop_id = loop_id
+                cls._instances[loop_id] = instance
+            if not instance._initialized:
+                try:
+                    await instance._initialize()
+                except Exception:
+                    # Initialization failed; remove broken instance so a future call can retry
+                    cls._instances.pop(loop_id, None)
+                    instance._owning_loop_id = None
+                    raise
+            return instance
 
     async def _initialize(self):
         """Initialize Playwright and browser."""
@@ -205,7 +233,11 @@ class BrowserHelper:
     async def close(self):
         """Close browser instance."""
         await self._cleanup()
-        BrowserHelper._instance = None
+        loop_id = self._owning_loop_id
+        if loop_id is not None:
+            BrowserHelper._instances.pop(loop_id, None)
+            BrowserHelper._init_locks.pop(loop_id, None)
+        self._owning_loop_id = None
 
     @classmethod
     async def check_installed(cls) -> bool:
