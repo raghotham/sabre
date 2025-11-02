@@ -11,6 +11,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Start server and client (recommended)
 uv run sabre
 
+# Run as script (one-off message)
+uv run sabre "your message here"
+
 # Or run components separately
 uv run sabre-server    # Server only
 uv run sabre-client    # Client only
@@ -34,6 +37,9 @@ uv sync
 
 # Install with test dependencies
 uv sync --dev
+
+# Install Playwright (required for browser automation in Web helper)
+uvx playwright install chromium --only-shell
 ```
 
 ### Testing
@@ -64,6 +70,8 @@ OPENAI_BASE_URL="https://api.openai.com/v1"  # For custom endpoints
 OPENAI_MODEL="gpt-4o"                        # Override default model
 OPENAI_SKIP_SSL_VERIFY="true"                # Skip SSL cert verification (testing only!)
 PORT="8011"                                   # Server port (default: 8011)
+LOG_LEVEL="INFO"                              # Logging level: DEBUG, INFO, WARNING, ERROR
+SABRE_THEME="dark"                            # Force theme: light or dark (auto-detected by default)
 
 # XDG directories (for testing)
 SABRE_HOME="/tmp/sabre-test"  # Override all XDG paths
