@@ -279,6 +279,9 @@ async def message_endpoint(request: Request):
             if conversation_id is None:
                 instructions = manager.orchestrator.load_default_instructions()
 
+            # Read interactive mode from environment (default: True)
+            interactive_mode = os.getenv("SABRE_INTERACTIVE_MODE", "true").lower() in ("true", "1", "yes")
+
             # Create task for orchestration (so we can cancel it)
             async def run_orchestration():
                 """Run orchestration and signal completion."""
@@ -289,6 +292,7 @@ async def message_endpoint(request: Request):
                         tree=tree,
                         instructions=instructions,  # Required for new conversations
                         event_callback=event_callback,
+                        interactive_mode=interactive_mode,
                     )
 
                     # Save conversation_id from orchestration result
@@ -433,6 +437,44 @@ async def cancel_request(request_id: str):
     else:
         logger.warning(f"⚠️ Request {request_id} not found for cancellation")
         return {"status": "not_found", "request_id": request_id}
+
+
+@app.post("/respond/{question_id}")
+async def respond_to_question(question_id: str, request: Request):
+    """
+    Respond to an ask_user() question.
+
+    Client POSTs: {"answers": ["answer1", "answer2", ...]}
+    Server resolves the pending Future in runtime.pending_questions
+    """
+    logger.info(f"💬 /respond/{question_id} - Received user response")
+
+    data = await request.json()
+    answers = data.get("answers", [])
+
+    if not answers:
+        logger.warning(f"⚠️ No answers provided for question {question_id}")
+        raise HTTPException(status_code=400, detail="No answers provided")
+
+    # Look up pending question in runtime
+    pending_questions = manager.orchestrator.runtime.pending_questions
+
+    if question_id not in pending_questions:
+        logger.warning(f"⚠️ Question {question_id} not found in pending questions")
+        raise HTTPException(status_code=404, detail="Question not found or already answered")
+
+    # Resolve the Future with answers
+    future = pending_questions[question_id]
+    if not future.done():
+        future.set_result(answers)
+        logger.info(f"✅ Resolved question {question_id} with {len(answers)} answer(s)")
+    else:
+        logger.warning(f"⚠️ Question {question_id} already resolved")
+
+    # Clean up
+    del pending_questions[question_id]
+
+    return {"status": "ok", "question_id": question_id, "answers_count": len(answers)}
 
 
 @app.post("/clear")

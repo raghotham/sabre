@@ -26,6 +26,7 @@ from sabre.server.helpers.matplotlib_helpers import matplotlib_to_image, generat
 from sabre.server.helpers.introspection import get_helper_signatures
 from sabre.server.helpers.fs import write_file, read_file
 from sabre.server.helpers.sabre_call import SabreCall
+from sabre.server.helpers.ask_user import AskUser
 from sabre.common.models.messages import Content, ImageContent, TextContent, PdfContent, FileContent
 
 if TYPE_CHECKING:
@@ -56,6 +57,7 @@ class PythonRuntime:
         """Initialize runtime with clean namespace."""
         self.orchestrator = None  # Set by orchestrator after init
         self.openai_client = None  # Lazy init in _llm_call_async
+        self.pending_questions = {}  # Dict[question_id, Future] for ask_user responses
 
         # Configure matplotlib to use non-interactive backend
         try:
@@ -96,6 +98,7 @@ class PythonRuntime:
             return ctx.event_callback if ctx else None
 
         sabre_call = SabreCall(lambda: self.orchestrator, get_tree, get_event_callback)
+        ask_user = AskUser(lambda: self.pending_questions)
 
         # Build namespace with helpers
         self.namespace = {
@@ -112,6 +115,7 @@ class PythonRuntime:
             "llm_list_bind": llm_list_bind,
             "pandas_bind": pandas_bind,
             "sabre_call": sabre_call,  # Recursive execution
+            "ask_user": ask_user,  # User interaction
             "result": self._result,
             "capture_figures": self._capture_figures_for_user,
             # File I/O helpers (stateless)

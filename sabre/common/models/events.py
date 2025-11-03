@@ -30,6 +30,9 @@ class EventType(Enum):
     NESTED_CALL_START = "nested_call_start"
     NESTED_CALL_END = "nested_call_end"
 
+    # User interaction events
+    ASK_USER = "ask_user"
+
     # Session events
     COMPLETE = "complete"
     ERROR = "error"
@@ -107,7 +110,7 @@ class Event:
     def from_json(cls, json_str: str) -> "Event":
         """Parse event from JSON"""
         d = json.loads(json_str)
-        d["type"] = EventType(d["type"])
+        event_type = EventType(d["type"])
         d["timestamp"] = datetime.fromisoformat(d["timestamp"])
 
         # Determine specific event class based on type
@@ -121,12 +124,29 @@ class Event:
             EventType.HELPERS_EXECUTION_END: HelpersExecutionEndEvent,
             EventType.NESTED_CALL_START: NestedCallStartEvent,
             EventType.NESTED_CALL_END: NestedCallEndEvent,
+            EventType.ASK_USER: AskUserEvent,
             EventType.COMPLETE: CompleteEvent,
             EventType.ERROR: ErrorEvent,
             EventType.CANCELLED: CancelledEvent,
         }
 
-        event_class = event_classes.get(d["type"], Event)
+        event_class = event_classes.get(event_type, Event)
+
+        # For base Event class, pass all parameters including type
+        if event_class == Event:
+            d["type"] = event_type
+            return event_class(**d)
+
+        # For subclasses, remove 'type' since they set it themselves
+        # timestamp is kept since subclasses pass it to parent __init__
+        d.pop("type", None)
+
+        # Special handling for AskUserEvent: extract question_id and questions from data
+        if event_class == AskUserEvent and "data" in d:
+            data = d.pop("data")
+            d["question_id"] = data.get("question_id", "")
+            d["questions"] = data.get("questions", [])
+
         return event_class(**d)
 
 
@@ -505,5 +525,37 @@ class CancelledEvent(Event):
             path_summary=path_summary,
             data={
                 "message": message,
+            },
+        )
+
+
+@dataclass
+class AskUserEvent(Event):
+    """Ask user for input during execution"""
+
+    def __init__(
+        self,
+        node_id: str,
+        parent_id: Optional[str],
+        depth: int,
+        path: list[str],
+        conversation_id: str,
+        question_id: str,
+        questions: list[str],
+        path_summary: str = "",
+        timestamp: Optional[datetime] = None,
+    ):
+        super().__init__(
+            type=EventType.ASK_USER,
+            node_id=node_id,
+            parent_id=parent_id,
+            depth=depth,
+            path=path,
+            conversation_id=conversation_id,
+            timestamp=timestamp if timestamp is not None else datetime.now(),
+            path_summary=path_summary,
+            data={
+                "question_id": question_id,
+                "questions": questions,
             },
         )

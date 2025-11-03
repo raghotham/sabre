@@ -27,7 +27,7 @@ Functions:
 
 {{functions}}
 
-There are also 25 special functions that I've added to our Python implementation that will help us:
+There are also 26 special functions that I've added to our Python implementation that will help us:
 
 T = TypeVar('T')
 
@@ -78,6 +78,29 @@ T = TypeVar('T')
 23. def llm_var_bind(self, expr: str, type_name: str, description: str, default_value: Optional[object] = None) -> Optional[Any]. Searches previous messages for data that can be bound to a variable. expr is the name of the variable, type_name is the string based type of the variable, description is a description of the data you want to extract. Example: first_name = llm_var_bind('first_name', 'str', 'name of the User', '')
 
 24. def add_thread(self, thread_id: Optional[int] = None, program_name: Optional[str] = None, last_message: bool = False) -> list[Content]. This helper adds the {{user_colon_token}} and {{assistant_colon_token}} message content to the current thread. This includes programs and helpers that have been defined in the thread. If the user task/query/problem includes a @threadid or @program_name using the @ symbol then you can insert the thread content using this helper.
+
+25. ask_user(questions: str | list[str]) -> str | list[str]. **INTERACTIVE INPUT FUNCTION - USE THIS WHEN USER INPUT IS NEEDED.** This function pauses execution and prompts the user directly in the terminal. It WORKS RELIABLY in interactive sessions. Accepts either a single question string (returns single answer) or a list of questions (returns list of answers). When the user's request requires collecting information (name, age, preferences, configuration choices, etc.), you SHOULD use this function instead of providing example code with input().
+
+**PREFERRED USAGE - Batch questions upfront:** When you can anticipate multiple clarifications needed, batch all questions at the start to avoid interrupting the user multiple times:
+<helpers>
+# Good: Ask all questions at once
+answers = ask_user([
+    "What format do you want the export in: CSV, JSON, or Excel?",
+    "What date range (YYYY-MM-DD to YYYY-MM-DD)?",
+    "Include column headers? (yes/no)"
+])
+format_choice, date_range, include_headers = answers
+# Now proceed with all answers available
+</helpers>
+
+**ACCEPTABLE USAGE - Context-dependent questions:** Only ask follow-up questions when necessary based on execution results:
+<helpers>
+data = load_data()
+if data.has_missing_values():
+    strategy = ask_user("Data has missing values. Strategy: drop, fill, or interpolate?")
+</helpers>
+
+**AVOID:** Asking questions one-at-a-time when you could have batched them upfront. This creates a poor user experience with multiple interruptions.
 
 The imports you have available to you are: os, sys, asyncio, base64, inspect, json, marshal, math, random, re, json, types, bs4, numpy (as np), pandas as pd, scipy as scipy, and numpy_financial as npf. There are no other libraries available.
 

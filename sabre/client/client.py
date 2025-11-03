@@ -42,6 +42,7 @@ class Client:
         # Track if we're processing a message (for cancellation)
         self.processing = False
         self.cancel_requested = False  # Flag for cancellation
+        self.asking_user = False  # Flag to pause escape monitor during ask_user
         self.current_request_id: str | None = None
         self.conversation_id: str | None = None
 
@@ -108,6 +109,11 @@ class Client:
             tty.setcbreak(sys.stdin.fileno())
 
             while self.processing:
+                # Skip escape monitoring when ask_user is active
+                if self.asking_user:
+                    await asyncio.sleep(0.1)
+                    continue
+
                 # Non-blocking read with select
                 import select
 
@@ -215,6 +221,7 @@ class Client:
                         ResponseRetryEvent,
                         HelpersExecutionStartEvent,
                         HelpersExecutionEndEvent,
+                        AskUserEvent,
                         CompleteEvent,
                         CancelledEvent,
                         ErrorEvent,
@@ -284,6 +291,74 @@ class Client:
 
                         # Display result content (text output + image URLs)
                         self.tui.render_helpers_end({"result": result}, event.depth)
+
+                    elif isinstance(event, AskUserEvent):
+                        # User interaction - pause execution and ask for input
+                        question_id = event.data["question_id"]
+                        questions = event.data["questions"]
+
+                        logger.info(f"  └─ ASK_USER: {len(questions)} question(s), id={question_id}")
+                        self.tui.print_tree_node(
+                            "ASK_USER",
+                            f"{len(questions)} question(s)",
+                            depth=event.depth,
+                            path=event.path,
+                        )
+
+                        # Display questions and collect answers
+                        answers = []
+                        question_color = self.tui.colors["info"]
+
+                        # Pause escape monitoring while collecting user input
+                        self.asking_user = True
+                        try:
+                            # Collect answers using prompt_toolkit (similar to main input)
+                            # Create a fresh PromptSession for ask_user to avoid conflicts
+                            from prompt_toolkit import PromptSession as AskUserSession
+                            ask_session = AskUserSession()
+
+                            for i, question in enumerate(questions):
+                                # Display question
+                                self.tui.print(f'\n<style fg="{question_color}">❓ Question {i + 1}/{len(questions)}: {question}</style>')
+
+                                # Prompt for answer - use run_in_executor with synchronous prompt
+                                # Same pattern as main loop at line 538
+                                try:
+                                    answer = await asyncio.get_event_loop().run_in_executor(
+                                        None,
+                                        ask_session.prompt,
+                                        "   Answer: "
+                                    )
+                                    answers.append(answer.strip())
+                                except (EOFError, KeyboardInterrupt):
+                                    # User cancelled - send empty answers
+                                    logger.warning("User cancelled question prompt")
+                                    answers.append("")
+                        finally:
+                            # Resume escape monitoring
+                            self.asking_user = False
+
+                        # Send answers back to server
+                        try:
+                            async with httpx.AsyncClient() as http_client:
+                                response = await http_client.post(
+                                    f"{self.server_url}/respond/{question_id}",
+                                    json={"answers": answers},
+                                    timeout=10.0,
+                                )
+
+                                if response.status_code == 200:
+                                    logger.info(f"✓ Sent {len(answers)} answer(s) for question_id={question_id}")
+                                    success_color = self.tui.colors["complete"]
+                                    self.tui.print(f'<style fg="{success_color}">✓ Answers submitted</style>\n')
+                                else:
+                                    logger.error(f"Failed to send answers: {response.status_code}")
+                                    error_color = self.tui.colors["error"]
+                                    self.tui.print(f'<style fg="{error_color}">✗ Failed to submit answers</style>\n')
+                        except Exception as e:
+                            logger.error(f"Error sending answers: {e}")
+                            error_color = self.tui.colors["error"]
+                            self.tui.print(f'<style fg="{error_color}">✗ Error: {e}</style>\n')
 
                     elif isinstance(event, ResponseTextEvent):
                         text_length = event.data["text_length"]

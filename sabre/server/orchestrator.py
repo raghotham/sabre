@@ -117,6 +117,7 @@ class Orchestrator:
         max_tokens: int = 4096,
         temperature: float = 1.0,
         event_callback: Callable[[Event], Awaitable[None]] | None = None,
+        interactive_mode: bool = True,
     ) -> OrchestrationResult:
         """
         Run orchestration loop.
@@ -130,6 +131,7 @@ class Orchestrator:
             max_tokens: Max output tokens
             temperature: Temperature
             event_callback: Event callback for streaming
+            interactive_mode: Allow ask_user() calls (default: True)
 
         Returns:
             OrchestrationResult with final response
@@ -238,7 +240,11 @@ class Orchestrator:
             # Execute helpers (may trigger recursive orchestrator calls)
             # This saves images to disk for client display
             execution_results = await self._execute_helpers(
-                helpers=parsed.helpers, tree=tree, parent_tree_context=tree_context, event_callback=event_callback
+                helpers=parsed.helpers,
+                tree=tree,
+                parent_tree_context=tree_context,
+                event_callback=event_callback,
+                interactive_mode=interactive_mode,
             )
 
             # Upload images to Files API (converts base64 to file_id references)
@@ -437,6 +443,7 @@ class Orchestrator:
         tree: ExecutionTree,
         parent_tree_context: dict,
         event_callback: Callable[[Event], Awaitable[None]] | None,
+        interactive_mode: bool = True,
     ) -> list[tuple[str, list]]:
         """
         Execute helper code blocks.
@@ -454,6 +461,7 @@ class Orchestrator:
             tree: Execution tree (modified in place)
             parent_tree_context: Tree context of parent node
             event_callback: Callback for events
+            interactive_mode: Whether to allow ask_user() calls (default: True)
 
         Returns:
             List of (output_text, content_list) tuples for each helper
@@ -492,6 +500,7 @@ class Orchestrator:
                 tree_context=helper_tree_context,
                 conversation_id=helper_tree_context["conversation_id"],
                 loop=current_loop,
+                interactive_mode=interactive_mode,
             )
 
             try:

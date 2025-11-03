@@ -16,7 +16,7 @@ from pathlib import Path
 from sabre.common.paths import get_logs_dir, get_pid_file, ensure_dirs, migrate_from_old_structure, cleanup_all
 
 
-def start_server():
+def start_server(interactive_mode: bool = True):
     """Start the SABRE server in background"""
     # Migrate from old structure if needed
     migrate_from_old_structure()
@@ -54,6 +54,7 @@ def start_server():
     if model:
         env["OPENAI_MODEL"] = model
     env["PORT"] = port
+    env["SABRE_INTERACTIVE_MODE"] = "true" if interactive_mode else "false"
 
     # Open log file (keep it open for subprocess)
     print("Starting server...")
@@ -245,6 +246,16 @@ def main():
     parser.add_argument("--stop", action="store_true", help="Stop the running server")
     parser.add_argument("--clean", action="store_true", help="Clean up all SABRE XDG directories")
     parser.add_argument("--force", action="store_true", help="Skip confirmation prompt (for --clean)")
+    parser.add_argument(
+        "--autonomous",
+        action="store_true",
+        help="Disable ask_user() calls - run in fully autonomous mode without user interaction",
+    )
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Enable ask_user() calls - allow LLM to ask clarifying questions (default)",
+    )
     args = parser.parse_args()
 
     # Handle --clean flag
@@ -255,12 +266,24 @@ def main():
     if args.stop:
         return stop_server()
 
+    # Determine interactive mode (default is True)
+    interactive_mode = True
+    if args.autonomous:
+        interactive_mode = False
+    elif args.interactive:
+        interactive_mode = True  # Explicit interactive (though it's already default)
+
+    # Warn if both flags specified
+    if args.autonomous and args.interactive:
+        print("Warning: Both --autonomous and --interactive specified. Using --autonomous.", file=sys.stderr)
+        interactive_mode = False
+
     # Normal operation: start server and run client
     server_process = None
 
     try:
         # Start server
-        server_process = start_server()
+        server_process = start_server(interactive_mode=interactive_mode)
 
         # Run client
         exit_code = asyncio.run(run_client())

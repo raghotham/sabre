@@ -27,6 +27,7 @@ class ExecutionContext:
     tree_context: dict
     conversation_id: str
     loop: Optional[asyncio.AbstractEventLoop] = None
+    interactive_mode: bool = True  # Allow ask_user() by default
 
 
 # Context variable (async-safe, thread-aware)
@@ -51,6 +52,7 @@ def set_execution_context(
     tree_context: dict,
     conversation_id: str,
     loop: Optional[asyncio.AbstractEventLoop] = None,
+    interactive_mode: bool = True,
 ) -> None:
     """
     Set execution context for current async task.
@@ -61,6 +63,7 @@ def set_execution_context(
         tree_context: Tree context metadata
         conversation_id: OpenAI conversation ID
         loop: Event loop that should run async helper coroutines
+        interactive_mode: Allow ask_user() calls (default: True)
     """
     ctx = ExecutionContext(
         event_callback=event_callback,
@@ -68,6 +71,7 @@ def set_execution_context(
         tree_context=tree_context,
         conversation_id=conversation_id,
         loop=loop,
+        interactive_mode=interactive_mode,
     )
     _execution_context_var.set(ctx)
 

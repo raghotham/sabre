@@ -27,6 +27,7 @@ COLORS = {
         "final_answer": "ansimagenta",  # More prominent for final answer
         "error": "ansired",
         "warning": "ansiyellow",
+        "info": "ansicyan",  # For ask_user questions
         "pygments_style": "friendly",  # Pygments theme for code highlighting (light)
     },
     "dark": {
@@ -38,6 +39,7 @@ COLORS = {
         "final_answer": "ansiwhite",  # Brighter for final answer
         "error": "ansibrightred",
         "warning": "ansibrightyellow",
+        "info": "ansibrightblue",  # For ask_user questions
         "pygments_style": "monokai",  # Pygments theme for code highlighting (dark)
     },
 }
