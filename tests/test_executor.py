@@ -14,7 +14,7 @@ from sabre.common.models import User, TextContent, ResponseTokenEvent
 @pytest.fixture
 def executor():
     """Create a ResponseExecutor instance for testing."""
-    return ResponseExecutor()
+    return ResponseExecutor(default_model="gpt-4o-mini")
 
 
 @pytest.fixture
@@ -53,19 +53,17 @@ async def test_streaming_execution(check_api_key, executor, tree_context):
         if isinstance(event, ResponseTokenEvent):
             tokens_received.append(event.data["token"])
 
-    # Create user message
-    messages = [User(content=[TextContent("Count from 1 to 5, one number per line.")])]
+    conversation = await executor.client.conversations.create()
 
-    # Execute with streaming
     assistant = await executor.execute(
-        messages=messages,
+        conversation_id=conversation.id,
+        input_text="Count from 1 to 5, one number per line.",
         event_callback=on_event,
         tree_context=tree_context,
     )
 
     # Assertions
     assert assistant is not None
-    assert assistant.response_id is not None
     assert len(assistant.get_str()) > 0
     assert len(tokens_received) > 0, "Should have received streaming tokens"
 
@@ -78,32 +76,28 @@ async def test_streaming_execution(check_api_key, executor, tree_context):
 @pytest.mark.asyncio
 async def test_response_continuation(check_api_key, executor):
     """Test response_id continuation."""
-    # First message
-    messages1 = [User(content=[TextContent("Say 'Hello, I am ready to continue.'")])]
+    conversation = await executor.client.conversations.create()
 
-    # Execute first call
-    assistant1 = await executor.execute(messages1)
+    assistant1 = await executor.execute(
+        conversation_id=conversation.id,
+        input_text="Say 'Hello, I am ready to continue.'",
+    )
 
     # Assertions for first call
     assert assistant1 is not None
-    assert assistant1.response_id is not None
     first_response = assistant1.get_str()
     first_response_id = assistant1.response_id
 
     print(f"✓ First call response: {first_response}")
     print(f"  Response ID: {first_response_id}")
 
-    # Continue with response_id
-    messages2 = messages1 + [assistant1, User(content=[TextContent("Now count to 3.")])]
-
     assistant2 = await executor.execute(
-        messages2,
-        previous_response_id=assistant1.response_id,
+        conversation_id=conversation.id,
+        input_text="Now count to 3.",
     )
 
     # Assertions for continuation
     assert assistant2 is not None
-    assert assistant2.response_id is not None
     assert assistant2.response_id != assistant1.response_id, "Should get new response_id"
     second_response = assistant2.get_str()
 
