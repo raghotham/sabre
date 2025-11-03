@@ -1,48 +1,21 @@
 """
-Tests for Orchestrator.
+Tests for Orchestrator high-level flow using patched internals.
 
 Run with: uv run pytest tests/test_orchestrator.py
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
-from sabre.server.orchestrator import Orchestrator
+from sabre.server.orchestrator import Orchestrator, ParsedResponse
 from sabre.server.python_runtime import PythonRuntime
-from sabre.common import Assistant, TextContent, ExecutionTree
+from sabre.common import ExecutionTree
 
 
-def test_parse_helpers():
-    """Test helper block parsing."""
+def test_replace_helpers_with_results_basic():
+    """_replace_helpers_with_results should swap helper blocks with results."""
     runtime = PythonRuntime()
-    executor = MagicMock()
-    orchestrator = Orchestrator(executor, runtime)
-
-    text = """
-    Some text before
-    <helpers>
-    x = 1 + 1
-    result(x)
-    </helpers>
-    Text in between
-    <helpers>
-    y = 2 + 2
-    result(y)
-    </helpers>
-    Text after
-    """
-
-    helpers = orchestrator.parse_helpers(text)
-
-    assert len(helpers) == 2
-    assert "x = 1 + 1" in helpers[0]
-    assert "y = 2 + 2" in helpers[1]
-
-
-def test_replace_helpers_with_results():
-    """Test replacing helpers with results."""
-    runtime = PythonRuntime()
-    executor = MagicMock()
+    executor = AsyncMock()
     orchestrator = Orchestrator(executor, runtime)
 
     text = """
@@ -53,88 +26,94 @@ def test_replace_helpers_with_results():
     After
     """
 
-    results = ["result1", "result2"]
-    replaced = orchestrator.replace_helpers_with_results(text, results)
+    results = [("result1", []), ("result2", [])]
+
+    replaced, image_refs = orchestrator._replace_helpers_with_results(text, results)
 
     assert "<helpers>code1</helpers>" not in replaced
     assert "<helpers>code2</helpers>" not in replaced
     assert "<helpers_result>result1</helpers_result>" in replaced
     assert "<helpers_result>result2</helpers_result>" in replaced
+    assert image_refs == []
+
 
 
 @pytest.mark.asyncio
 async def test_orchestrator_no_helpers():
-    """Test orchestrator with response containing no helpers."""
+    """Orchestrator should return streamed text when no helpers are present."""
     runtime = PythonRuntime()
     executor = AsyncMock()
     tree = ExecutionTree()
 
-    # Mock executor to return response without helpers
-    mock_response = Assistant([TextContent("This is a plain response")])
-    mock_response.response_id = "resp_123"
-    executor.execute = AsyncMock(return_value=mock_response)
-
     orchestrator = Orchestrator(executor, runtime)
+    orchestrator._stream_and_parse_response = AsyncMock(
+        return_value=ParsedResponse(
+            full_text="This is a plain response",
+            helpers=[],
+            response_id="resp_123",
+        )
+    )
+    orchestrator._ensure_images_uploaded = AsyncMock(side_effect=lambda x: x)
 
     result = await orchestrator.run(conversation_id="conv_123", input_text="Hello", tree=tree)
 
     assert result.success
     assert result.final_response == "This is a plain response"
-    assert executor.execute.call_count == 1
+    orchestrator._stream_and_parse_response.assert_awaited()
 
 
 @pytest.mark.asyncio
 async def test_orchestrator_with_helpers():
-    """Test orchestrator with response containing helpers."""
+    """Orchestrator should execute helpers and continue the loop."""
     runtime = PythonRuntime()
     executor = AsyncMock()
     tree = ExecutionTree()
 
-    # First call: response with helpers
-    response1 = Assistant(
-        [
-            TextContent("""
-    Let me calculate that for you.
-    <helpers>
-    x = 2 + 2
-    result(x)
-    </helpers>
-    """)
+    orchestrator = Orchestrator(executor, runtime)
+    orchestrator._stream_and_parse_response = AsyncMock(
+        side_effect=[
+            ParsedResponse(
+                full_text="Helper incoming",
+                helpers=["x = 2 + 2\nresult(x)"],
+                response_id="resp_1",
+            ),
+            ParsedResponse(
+                full_text="The result is 4",
+                helpers=[],
+                response_id="resp_2",
+            ),
         ]
     )
-    response1.response_id = "resp_1"
-
-    # Second call: response without helpers
-    response2 = Assistant([TextContent("The result is 4")])
-    response2.response_id = "resp_2"
-
-    executor.execute = AsyncMock(side_effect=[response1, response2])
-
-    orchestrator = Orchestrator(executor, runtime)
+    orchestrator._execute_helpers = AsyncMock(return_value=[("Computed result: 4", [])])
+    orchestrator._ensure_images_uploaded = AsyncMock(side_effect=lambda x: x)
 
     result = await orchestrator.run(conversation_id="conv_123", input_text="What is 2 + 2?", tree=tree)
 
     assert result.success
     assert result.final_response == "The result is 4"
-    assert executor.execute.call_count == 2
+    assert orchestrator._execute_helpers.await_count == 1
 
 
 @pytest.mark.asyncio
 async def test_orchestrator_max_iterations():
-    """Test orchestrator stops at max iterations."""
+    """Orchestrator should stop after hitting the max iteration cap."""
     runtime = PythonRuntime()
     executor = AsyncMock()
     tree = ExecutionTree()
 
-    # Always return response with helpers
-    response = Assistant([TextContent("<helpers>x=1</helpers>")])
-    response.response_id = "resp_123"
-    executor.execute = AsyncMock(return_value=response)
-
     orchestrator = Orchestrator(executor, runtime, max_iterations=3)
+    orchestrator._stream_and_parse_response = AsyncMock(
+        return_value=ParsedResponse(
+            full_text="Still helper",
+            helpers=["x = 1"],
+            response_id="resp_iter",
+        )
+    )
+    orchestrator._execute_helpers = AsyncMock(return_value=[("loop", [])])
+    orchestrator._ensure_images_uploaded = AsyncMock(side_effect=lambda x: x)
 
     result = await orchestrator.run(conversation_id="conv_123", input_text="Test", tree=tree)
 
     assert not result.success
     assert "Max iterations" in result.error
-    assert executor.execute.call_count == 3
+    assert orchestrator._execute_helpers.await_count == 3
