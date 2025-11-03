@@ -12,6 +12,32 @@ from sabre.server.python_runtime import PythonRuntime
 from sabre.common import ExecutionTree
 
 
+def test_replace_helpers_with_results_basic():
+    """_replace_helpers_with_results should swap helper blocks with results."""
+    runtime = PythonRuntime()
+    executor = AsyncMock()
+    orchestrator = Orchestrator(executor, runtime)
+
+    text = """
+    Before
+    <helpers>code1</helpers>
+    Middle
+    <helpers>code2</helpers>
+    After
+    """
+
+    results = [("result1", []), ("result2", [])]
+
+    replaced, image_refs = orchestrator._replace_helpers_with_results(text, results)
+
+    assert "<helpers>code1</helpers>" not in replaced
+    assert "<helpers>code2</helpers>" not in replaced
+    assert "<helpers_result>result1</helpers_result>" in replaced
+    assert "<helpers_result>result2</helpers_result>" in replaced
+    assert image_refs == []
+
+
+
 @pytest.mark.asyncio
 async def test_orchestrator_no_helpers():
     """Orchestrator should return streamed text when no helpers are present."""
