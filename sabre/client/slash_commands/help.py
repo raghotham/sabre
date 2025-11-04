@@ -20,7 +20,7 @@ class HelpCommand(BaseCommand):
 
 /help           - Show this help message
 /helpers        - Show available Python helpers and functions
-/theme [mode]   - Toggle theme or set to 'light' or 'dark'
+/theme-toggle   - Toggle between light and dark theme
 /clear          - Note about conversation context
 /exit, /quit    - Exit the client
 

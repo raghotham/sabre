@@ -2,45 +2,47 @@
 
 ## Problem Statement
 
-Looking at the data scientist prompt vs. the base continuation prompt reveals a key architectural issue:
-
 **Current State:**
-- Base prompt: 692 lines of execution instructions
-- Data scientist prompt: 97 lines with domain-specific persona and workflow
-- Both inject ALL helpers via `{{functions}}` template
-- Result: Wasted tokens on irrelevant tools, model confusion, no way to create focused distributions
+- Base prompt includes ALL helpers in full detail
+- Generic "helpful assistant" identity with no domain expertise
+- No workflow guidance or examples showing how to approach domain-specific tasks
+- Result: Wasted tokens, model confusion, no domain focus
 
-**The Real Problem: Helper Bloat**
+**The Real Problem: No Domain Focus**
 
-LLMVM has 13+ tool helper classes:
-- Browser automation: Browser, Chrome, MacOSChromeBrowser
-- Search: Search, SearchTool, SearchHN, InternalSearch
-- Data: Database, SemanticDatabase, Sheets
-- Finance: Market, Edgar
-- Web: WebHelpers
+SABRE has ~15 helper functions/classes:
+- Core: llm_call, llm_bind, pandas_bind, sabre_call, coerce
+- Tools: Bash, Search, Web, Browser, FS, matplotlib
+- Introspection: helpers()
 
-For a data scientist persona, you only need:
-- Database, SemanticDatabase, WebHelpers (downloads)
-- Core BCL (llm_call, pandas_bind, etc.)
+Every prompt includes full documentation for ALL helpers, even for domain-specific tasks where only a subset is relevant.
 
-But currently ALL helpers are injected into every prompt = thousands of wasted tokens.
+## Solution: Example-Driven Persona System
 
-## Solution: Persona System
-
-**Personas** are configuration-based LLMVM distributions with:
+**Personas** are configuration-based SABRE distributions with:
 1. **Identity** - Who you are and your expertise domain
-2. **Filtered helper sets** - Only relevant tools for that domain
-3. **Domain workflow** - Specific best practices and methodologies
-4. **Shared execution model** - Same base prompt template
+2. **Example workflows** - Concrete examples showing how this persona approaches tasks
+3. **Featured helpers** - Key tools shown in detail (used in examples)
+4. **Generic access** - `helpers()` function as escape hatch for any other helper
+5. **Shared execution model** - Same base prompt template
+
+### Key Insight: Teaching by Example
+
+Instead of hard filtering helpers (which limits flexibility), we **teach by example**:
+- Show 2-4 example workflows for the persona
+- Feature the helpers used in those examples
+- Keep `helpers()` available for discovering other helpers when needed
+- Let the LLM learn from patterns, not restrictions
 
 ### Personas vs Modes
 
 | Aspect | Modes | Personas |
 |--------|-------|----------|
 | **Purpose** | Change execution behavior | Change domain focus |
-| **Examples** | tools, direct, reasoning, program | default, data-scientist, web-researcher, finance-analyst |
-| **What changes** | How code executes | Which helpers + domain expertise |
+| **Examples** | tools, direct, reasoning, program | default, web-researcher, coder, data-analyst |
+| **What changes** | How code executes | Identity + examples + featured helpers |
 | **Prompt structure** | Different continuation prompts | Same base template + persona config |
+| **Helper access** | All helpers available | Featured helpers + `helpers()` escape hatch |
 | **Runtime switching** | Yes, via `/mode` | No, set at startup |
 
 ## Three-Layer Prompt Architecture
@@ -55,38 +57,37 @@ The technical mechanics of how the continuation system works:
 - How results are returned in `<helpers_result>` tags
 - Variable persistence across blocks
 
-**This layer is identical for all personas** - it's the core LLMVM execution model.
+**This layer is identical for all personas** - it's the core SABRE execution model.
 
 ### Layer 2: Meta Execution Patterns (Constant)
 
 Strategic patterns for effective problem solving:
 - **When to use llm_call**: Text analysis, summarization, extraction, comparison
-- **When to use delegate_task**: Parallelization and compartmentalization
-- **When to use memory**: Context window management (write_memory/read_memory)
+- **When to use sabre_call**: Recursive task delegation with fresh context
 - **When to use binding helpers**: Data extraction (llm_bind, llm_list_bind, pandas_bind)
 - **When to verify results**: Cross-validation for critical outputs
+- **How to use helpers()**: Introspection and discovery of available functions
 
 **This layer is also constant** - it teaches strategic tool use patterns that apply universally.
 
-### Layer 3: Domain Workflow (Variable)
+### Layer 3: Persona Examples (Variable)
 
-Persona-specific workflows and best practices:
-- **Data scientist**: Discovery → Analysis → Verification → Insights
-- **Web researcher**: Understanding → Gathering → Cross-referencing → Synthesis
-- **Finance analyst**: Data Gathering → Quantitative Analysis → SEC Review → Insights
+Persona-specific example workflows showing how this persona approaches tasks:
+- **Web researcher**: Search → Download → Extract → Cross-reference → Synthesize
+- **Coder**: Read files → Execute commands → Iterate → Verify
+- **Data analyst**: Load data → Clean → Visualize → Analyze → Report
 
-**This layer varies by persona** - it's where domain expertise lives.
+**This layer varies by persona** - it's where domain expertise lives through concrete examples.
 
 ## Prompt Template Structure
 
 ```
 [system_message]
-{{persona}}
+{{persona_identity}}
 
 [Context: date, timezone, scratch directory, context window info...]
 
 [user_message]
-{{persona_approach}}
 
 ## System Execution Flow
 
@@ -110,56 +111,43 @@ Strategic patterns for effective problem solving:
 **Text analysis and extraction:**
 * Use `llm_call(expr_list, instructions)` for text summarization, extraction, analysis, comparison
 * Bias towards llm_call for any text understanding tasks
-* Keep expr_list under {{context_window_words}} words
 
 **Data binding and extraction:**
 * Use `llm_bind(data, "function_signature")` to intelligently bind arbitrary text to function parameters
 * Use `llm_list_bind(data, instructions, count)` to extract structured lists from text
 * Use `pandas_bind(data)` to create DataFrames from arbitrary data
 
-**Parallel execution:**
-* Use `delegate_task(description, context)` for compartmentalized sub-tasks
-* Use `asyncio.gather()` to run multiple delegate_task calls in parallel
-* Pass scratchpad thinking to delegated tasks for context
-
-**Context window management:**
-* Use `write_memory(key, summary, content)` to store completed work
-* Use `read_memory_keys()` to see what's stored
-* Use `read_memory(key)` to retrieve stored content
-* Free up context by moving completed sub-tasks to memory
+**Task delegation:**
+* Use `sabre_call(description, expr_list)` for compartmentalized sub-tasks with fresh context
+* Useful for parallel work or when you need a clean slate
 
 **Verification and validation:**
 * For critical results, cross-validate with alternative approaches
 * Use multiple data sources when available
 * Explicitly state confidence levels and limitations
 
-{{persona_workflow}}
+{{persona_examples}}
 
-## Available Helpers
+## Featured Helpers
 
-{{filtered_helpers}}
+{{featured_helpers}}
 
-[Technical details: 25 special functions, Content classes, imports, etc.]
+## Generic Helper Access
+
+If you need a helper not shown above, call `helpers()` to see all available functions.
+You can also search with `helpers("search_term")` to find specific functionality.
+
+[Technical details: Content classes, imports, etc.]
 ```
 
 ## Template Variables
 
-### `{{persona}}` - Identity (system_message)
+### `{{persona_identity}}` - Identity (system_message)
 
 **Default:**
 ```
-You are a helpful LLM Assistant. You are given a problem description or a question,
-and using the techniques described in the Toolformer paper, you deconstruct the
-problem/query/question into natural language and optional tool helper calls via
-the Python language.
-```
-
-**Data Scientist:**
-```
-You are an expert data scientist with deep knowledge of SQL databases, business
-intelligence, and data analysis. You have the ability to connect to and learn
-from databases, building persistent knowledge about their structure and business
-context over time.
+You are a helpful AI assistant. You solve problems by breaking them down into
+smaller tasks and using the available Python helpers to execute those tasks.
 ```
 
 **Web Researcher:**
@@ -169,254 +157,299 @@ analyzing multiple sources, and synthesizing comprehensive, well-cited answers.
 You excel at fact-checking and source evaluation.
 ```
 
-**Finance Analyst:**
+**Coder:**
 ```
-You are an expert financial analyst with deep knowledge of markets, SEC filings,
-financial statements, and investment analysis. You provide data-driven insights
-on companies, sectors, and market trends.
-```
-
-### `{{persona_approach}}` - How you work (user_message intro)
-
-**Default:**
-```
-You take natural language problems, questions, and queries and solve them by
-breaking them down into smaller, discrete tasks and optionally working with
-me and my Python runtime to program and execute those tasks.
+You are an expert programmer who helps with coding tasks, debugging, and
+software development. You write clean, well-tested code and follow best practices.
 ```
 
-**Data Scientist:**
+**Data Analyst:**
 ```
-You approach database analysis methodically: first learning the structure,
-understanding the business domain, then building a comprehensive mental model
-that persists across sessions. Every analysis is verified through multiple
-query approaches before presenting results.
-```
-
-**Web Researcher:**
-```
-You approach research systematically: understanding the question, identifying
-authoritative sources, cross-referencing findings, and synthesizing comprehensive
-answers with proper citations.
+You are an expert data analyst skilled at working with datasets, creating
+visualizations, and extracting insights from data. You write clear, reproducible
+analyses.
 ```
 
-**Finance Analyst:**
-```
-You approach financial analysis rigorously: gathering data from multiple sources,
-performing quantitative analysis, reviewing SEC filings, and generating actionable
-insights backed by data.
-```
+### `{{persona_examples}}` - Example workflows (user_message)
 
-### `{{persona_workflow}}` - Domain workflow (optional section)
-
-**Default:** (empty or minimal)
-
-**Data Scientist:**
-```markdown
-### Database Analysis Workflow
-
-Your domain-specific approach:
-
-**Discovery Phase:**
-1. Check existing semantic analyses: `SemanticDatabaseHelpers.list_available_semantic_analyses()`
-2. Connect to database: `DatabaseHelpers.connect_database(db_path)`
-3. Review schema: `DatabaseHelpers.get_database_schema(db_path)`
-4. Review context: `DatabaseHelpers.get_business_context(db_path)`
-5. Build semantic understanding: `SemanticDatabaseHelpers.create_semantic_understanding(db_path)`
-
-**Analysis Phase:**
-1. Get domain suggestions: `DatabaseHelpers.suggest_analysis_queries(db_path)`
-2. Use `llm_call()` to understand user question
-3. Find relevant schema: `SemanticDatabaseHelpers.get_semantic_context(db_path, query)`
-4. Execute queries: `DatabaseHelpers.query_database(db_path, sql)`
-
-**Verification Phase (MANDATORY):**
-1. Generate alternatives: `SemanticDatabaseHelpers.generate_verification_queries(db_path, query)`
-2. Run 2-3 alternative query approaches
-3. Use `llm_call()` to compare results for consistency
-4. Only present results after verification confirms accuracy
-
-**Knowledge Building:**
-- Store insights: `DatabaseHelpers.add_insight(db_path, insight)`
-- Your learning persists across sessions via automatic caching
-- Build on previous context rather than restarting each time
-```
+**Default:** (empty - no specific examples)
 
 **Web Researcher:**
 ```markdown
-### Web Research Workflow
+## Example Workflows
 
-Your domain-specific approach:
+Here are examples of how you approach common research tasks:
 
-**Understanding Phase:**
-1. Break down the research question into sub-questions
-2. Identify what type of sources are needed (academic, news, technical, etc.)
-3. Use `llm_call()` to plan the research strategy
+### Example 1: Find recent information on a topic
 
-**Gathering Phase:**
-1. Search for sources: `Search.search(query)` or `SearchTool.search(query)`
-2. Download content: `download([url1, url2, ...])`
-3. Extract relevant information from each source using `llm_call()`
+<helpers>
+# 1. Search for recent sources
+results = Search.search("quantum computing 2024 breakthroughs", num_results=5)
 
-**Verification Phase:**
-1. Cross-reference findings across multiple sources
-2. Check publication dates and author credentials
-3. Identify contradictions or uncertainties
-4. Use `llm_call()` to assess source reliability
+# 2. Download top results as screenshots
+content = download(results[:3])
 
-**Synthesis Phase:**
-1. Combine findings into comprehensive answer
-2. Include citations for all claims
-3. Note any limitations or areas of uncertainty
+# 3. Extract key information using llm_call
+findings = llm_call(content, "Extract main points about quantum computing breakthroughs in 2024")
+
+# 4. Return synthesized answer
+result(findings)
+</helpers>
+
+### Example 2: Verify a claim with multiple sources
+
+<helpers>
+# 1. Search for authoritative sources
+scientific = Search.search("climate change scientific evidence 2024")
+fact_check = Search.search("climate change fact check")
+
+# 2. Download both sets
+all_content = download(scientific[:2] + fact_check[:2])
+
+# 3. Cross-reference using llm_call
+verification = llm_call(
+    all_content,
+    "Verify the climate change claim. Cite sources. Note any contradictions or areas of consensus."
+)
+
+result(verification)
+</helpers>
+
+### Example 3: Deep research with sub-questions
+
+<helpers>
+# 1. Break down main question
+sub_questions = llm_call(
+    "Who invented the internet?",
+    "Break this into 3-4 sub-questions that need to be answered"
+)
+
+# 2. Research each sub-question
+answers = []
+for question in sub_questions:
+    results = Search.search(question)
+    content = download(results[:2])
+    answer = llm_call(content, f"Answer: {question}")
+    answers.append(answer)
+
+# 3. Synthesize final answer
+final = llm_call(answers, "Synthesize a comprehensive answer citing sources")
+result(final)
+</helpers>
 ```
 
-**Finance Analyst:**
+**Coder:**
 ```markdown
-### Financial Analysis Workflow
+## Example Workflows
 
-Your domain-specific approach:
+Here are examples of how you approach common coding tasks:
 
-**Data Gathering:**
-1. Identify ticker/company: `Market.search_ticker(company_name)` if needed
-2. Get fundamentals: `Market.get_company_info(ticker)`
-3. Get price data: `Market.get_stock_price(ticker, period='1y')`
-4. Review SEC filings: `Edgar.search_filings(ticker, form_type='10-K')`
+### Example 1: Debug a Python script
 
-**Quantitative Analysis:**
-1. Calculate key metrics (P/E, revenue growth, margins, etc.)
-2. Compare to sector peers: `Market.get_sector_companies(sector)`
-3. Identify trends and anomalies
-4. Use `pandas_bind()` to create DataFrames for analysis
+<helpers>
+# 1. Read the file to understand the code
+code = FS.read_file("script.py")
 
-**Qualitative Analysis:**
-1. Review management commentary from filings
-2. Assess competitive positioning
-3. Evaluate risks and opportunities
+# 2. Identify the issue using llm_call
+analysis = llm_call(code, "What's causing the error? Explain the bug.")
 
-**Synthesis:**
-1. Generate actionable insights
-2. Back all claims with specific data points
-3. Note risks and limitations
-4. Provide clear recommendations when appropriate
+# 3. Fix the code
+fixed_code = llm_call([code, analysis], "Generate the corrected version")
+
+# 4. Write back the fixed code
+FS.write_file("script.py", fixed_code)
+
+result("Fixed the bug. See script.py")
+</helpers>
+
+### Example 2: Run tests and fix failures
+
+<helpers>
+# 1. Run the test suite
+test_output = Bash.execute("pytest tests/")
+
+# 2. If there are failures, analyze them
+if "FAILED" in test_output:
+    failures = llm_call(test_output, "Extract which tests failed and why")
+
+    # 3. Read the relevant code
+    code = FS.read_file("src/module.py")
+
+    # 4. Fix the issues
+    fixes = llm_call([code, failures], "Generate fixes for the failing tests")
+
+    result(fixes)
+else:
+    result("All tests passed!")
+</helpers>
 ```
 
-### `{{filtered_helpers}}` - Only relevant tools
+**Data Analyst:**
+```markdown
+## Example Workflows
 
-**Default:** (all helpers)
+Here are examples of how you approach data analysis tasks:
+
+### Example 1: Analyze CSV data
+
+<helpers>
+# 1. Download the data
+csv_path = Web.download_csv("https://example.com/data.csv")
+
+# 2. Load with pandas
+import pandas as pd
+df = pd.read_csv(csv_path)
+
+# 3. Create smart DataFrame with pandas_bind
+smart_df = pandas_bind(df)
+
+# 4. Ask questions about the data
+insights = smart_df.ask("What are the key trends? Any outliers?")
+
+result(insights)
+</helpers>
+
+### Example 2: Visualize data
+
+<helpers>
+# Load data
+import pandas as pd
+import matplotlib.pyplot as plt
+
+df = pd.read_csv("data.csv")
+
+# Create visualization
+plt.figure(figsize=(10, 6))
+df.groupby('category')['value'].mean().plot(kind='bar')
+plt.title("Average Values by Category")
+plt.xlabel("Category")
+plt.ylabel("Average Value")
+
+# Result will auto-capture the figure
+result("See visualization above")
+</helpers>
+
+### Example 3: Compare datasets
+
+<helpers>
+# Load two datasets
+df1 = pd.read_csv("2023_data.csv")
+df2 = pd.read_csv("2024_data.csv")
+
+# Use llm_call to analyze differences
+comparison = llm_call(
+    [df1.describe().to_string(), df2.describe().to_string()],
+    "Compare these two datasets. What changed? What are the trends?"
+)
+
+result(comparison)
+</helpers>
 ```
-Functions:
 
-{{functions}}  # All tool helpers injected
+### `{{featured_helpers}}` - Key tools for this persona
 
-[25 special functions listed in detail...]
+**Default:** (all helpers shown)
+```
+## Core Functions
+
+1. llm_call(expr_list, instructions) - Delegate text analysis to LLM
+2. llm_bind(data, "function_signature") - Extract structured data
+3. llm_list_bind(data, instructions, count) - Extract lists
+4. pandas_bind(df) - Create smart DataFrames with .ask() method
+5. coerce(data, type) - Type conversion
+6. sabre_call(description, expr_list) - Recursive task delegation
+7. result(value) - Return final result
+
+## Tools
+
+- Bash.execute(command) - Run bash commands
+- Search.search(query, num_results=10) - Web search
+- Web.download(urls) - Download web content as screenshots/files
+- Web.download_csv(url) - Download CSV files
+- Browser.screenshot(url) - Take webpage screenshot
+- FS.read_file(path) - Read files
+- FS.write_file(path, content) - Write files
+- helpers() - See all available functions
+- helpers("search_term") - Search for specific helpers
 ```
 
-**Data Scientist:** (filtered to ~10 relevant helpers)
+**Web Researcher:** (featured: Search, Web, llm_call)
 ```
-## Database Tools
-
-### DatabaseHelpers
-- DatabaseHelpers.connect_database(db_path) - Connect and learn database structure
-- DatabaseHelpers.query_database(db_path, sql) - Execute SQL queries
-- DatabaseHelpers.get_database_schema(db_path) - Get cached schema information
-- DatabaseHelpers.get_business_context(db_path) - Review learned business insights
-- DatabaseHelpers.suggest_analysis_queries(db_path) - Get domain-specific query suggestions
-- DatabaseHelpers.add_insight(db_path, insight) - Store business insights for future sessions
-
-### SemanticDatabaseHelpers
-- SemanticDatabaseHelpers.list_available_semantic_analyses() - List all knowledge bases
-- SemanticDatabaseHelpers.create_semantic_understanding(db_path) - Build vector store index
-- SemanticDatabaseHelpers.get_semantic_context(db_path, query) - Find relevant schema context
-- SemanticDatabaseHelpers.generate_verification_queries(db_path, original_query) - Generate cross-validation queries
-- SemanticDatabaseHelpers.get_semantic_suggestions(db_path, context) - Get AI-powered analysis suggestions
-
-### WebHelpers (Download Only)
-- WebHelpers.download(url) - Download data files
-- WebHelpers.fetch_url(url) - Fetch web content
-
-## Core BCL Functions
-
-1. llm_call(expression_list, instructions) - Perform text analysis and computation
-2. llm_bind(expression, function_str) - Intelligently bind data to function parameters
-3. llm_list_bind(expression, instructions, count) - Extract structured lists from text
-4. pandas_bind(expression) - Create intelligent DataFrames with ask() method
-5. coerce(expression, type_var) - Type coercion
-6. download(url_list) - Download files and data
-7. result(expression) - Return final results
-8. write_memory(key, summary, content) - Store content to memory
-9. read_memory(key) - Retrieve content from memory
-10. read_memory_keys() - List all memory keys
-11. read_file(path) - Read local files
-12. write_file(filename, content) - Write to scratch directory
-```
-
-**Web Researcher:** (filtered to search & web tools)
-```
-## Search Tools
+## Search & Web Tools
 
 ### Search
-- Search.search(query, num_results=10) - General web search
-- Search.search_news(query, days_back=7) - News search
-- Search.search_academic(query) - Academic paper search
+- Search.search(query, num_results=10) - Web search via DuckDuckGo
+  Returns list of SearchResult objects with .title, .url, .snippet
 
-### SearchTool
-- SearchTool.search(query, engine='google') - Multi-engine search
-- SearchTool.get_related_queries(query) - Find related search queries
+### Web
+- Web.download(urls) - Download web pages as screenshots
+  Accepts URL string, list of URLs, or SearchResult list
+  Returns ImageContent (screenshots) or TextContent (PDFs/CSVs)
 
-### WebHelpers
-- WebHelpers.download(url) - Download web content
-- WebHelpers.fetch_url(url) - Fetch HTML content
-- WebHelpers.extract_links(content) - Extract all links from content
-- WebHelpers.extract_text(content) - Clean text extraction from HTML
+- Web.download_csv(url) - Download CSV file to temp path
+  Returns file path for use with pd.read_csv()
 
-### Browser (Optional)
-- Browser.navigate(url) - Navigate to webpage
-- Browser.get_content() - Get rendered page content
-- Browser.screenshot() - Take page screenshot
+### Browser
+- Browser.screenshot(url, timeout=30000) - Screenshot webpage
+  Uses Playwright for JavaScript-heavy sites
+  Returns bytes of full-page PNG
 
-## Core BCL Functions
+## Core Analysis Functions
 
-1. llm_call(expression_list, instructions) - Text analysis and summarization
-2. llm_bind(expression, function_str) - Bind data to function parameters
-3. llm_list_bind(expression, instructions, count) - Extract structured lists
-4. download(url_list) - Download multiple URLs
-5. result(expression) - Return final results
-6. write_memory(key, summary, content) - Store research findings
-7. read_memory(key) - Retrieve stored findings
+- llm_call(expr_list, instructions) - Analyze/summarize/extract from text or images
+- llm_bind(data, "function(param: type) -> type") - Extract structured data
+- llm_list_bind(data, instructions, count) - Extract list of items
+- result(value) - Return final answer
 ```
 
-**Finance Analyst:** (filtered to market & finance tools)
+**Coder:** (featured: Bash, FS, llm_call)
 ```
-## Financial Data Tools
+## File System Tools
 
-### Market
-- Market.search_ticker(company_name) - Find ticker symbol
-- Market.get_company_info(ticker) - Get company fundamentals
-- Market.get_stock_price(ticker, period='1y') - Historical price data
-- Market.get_financials(ticker) - Income statement, balance sheet, cash flow
-- Market.get_sector_companies(sector) - List companies in sector
-- Market.calculate_metrics(ticker) - Calculate financial ratios
+### FS
+- FS.read_file(path) - Read file contents
+  Returns string of file contents
 
-### Edgar (SEC Filings)
-- Edgar.search_filings(ticker, form_type='10-K') - Search SEC filings
-- Edgar.get_filing(accession_number) - Download specific filing
-- Edgar.extract_section(filing, section_name) - Extract filing sections
+- FS.write_file(path, content) - Write content to file
+  Creates parent directories if needed
 
-### WebHelpers
-- WebHelpers.download(url) - Download financial reports
-- WebHelpers.fetch_url(url) - Fetch investor relations pages
+- FS.list_files(directory=".", pattern="*") - List files matching pattern
+  Returns list of file paths
 
-### DatabaseHelpers (Optional)
-- DatabaseHelpers.query_database(db_path, sql) - Query financial databases
+### Bash
+- Bash.execute(command) - Execute bash command
+  Returns stdout/stderr output
+  Use for running tests, git commands, package managers, etc.
 
-## Core BCL Functions
+## Code Analysis Functions
 
-1. llm_call(expression_list, instructions) - Analyze financial texts
-2. pandas_bind(expression) - Create DataFrames from financial data
-3. coerce(expression, type_var) - Type coercion for calculations
-4. result(expression) - Return analysis results
-5. write_memory(key, summary, content) - Store analysis findings
-6. read_memory(key) - Retrieve stored findings
+- llm_call(expr_list, instructions) - Analyze code, identify bugs, generate fixes
+- result(value) - Return final answer
+```
+
+**Data Analyst:** (featured: pandas, matplotlib, Web.download_csv)
+```
+## Data Tools
+
+### Web
+- Web.download_csv(url) - Download CSV file
+  Returns temp file path for pd.read_csv()
+
+### Pandas Integration
+- pandas_bind(df) - Create smart DataFrame
+  Returns DataFrame with .ask(question) method
+  Use .ask() to query data in natural language
+
+### Matplotlib
+- Import and use normally: `import matplotlib.pyplot as plt`
+- Figures are automatically captured and displayed
+- No need to call plt.show() or save manually
+
+## Analysis Functions
+
+- llm_call(expr_list, instructions) - Analyze data, generate insights
+- coerce(data, type) - Type conversion for data cleaning
+- result(value) - Return final analysis
 ```
 
 ## Persona Configuration
