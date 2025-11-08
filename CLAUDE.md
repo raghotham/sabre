@@ -28,6 +28,11 @@ uv run sabre --stop
 # Clean up XDG directories (removes all data, logs, cache)
 uv run sabre --clean
 uv run sabre --clean --force  # Skip confirmation
+
+# MCP Integration
+uv run sabre list    # List configured MCP servers
+uv run sabre init    # Create example MCP config
+uv run sabre config  # Show MCP config file path
 ```
 
 ### Dependencies
@@ -215,6 +220,161 @@ See `plans/PERSONA_PLAN.md` for detailed architecture. The persona system will e
 - **Domain workflows**: Persona-specific best practices
 - **Token efficiency**: Fewer helpers in prompt = fewer tokens
 - **Focused expertise**: Clearer guidance for specific domains
+
+## MCP Integration
+
+SABRE integrates with the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), enabling connection to external MCP servers for additional tools and capabilities.
+
+### Architecture
+
+**Components:**
+- **MCPClient** (`sabre/server/mcp/client.py`) - JSON-RPC communication with MCP servers
+- **MCPClientManager** (`sabre/server/mcp/client_manager.py`) - Multi-server management
+- **MCPHelperAdapter** (`sabre/server/mcp/helper_adapter.py`) - Bridges MCP tools to SABRE runtime
+- **MCPConfigLoader** (`sabre/server/mcp/config.py`) - YAML configuration parsing
+
+**Flow:**
+1. Server startup reads `~/.config/sabre/mcp.yaml`
+2. MCPClientManager connects to enabled servers via stdio (subprocesses) or SSE (HTTP)
+3. MCPHelperAdapter discovers tools and creates Python callables
+4. Tools injected into PythonRuntime namespace alongside built-in helpers
+5. LLM can invoke MCP tools via `<helpers>` blocks using qualified names (e.g., `Postgres.query()`)
+
+### Configuration
+
+**Location:** `~/.config/sabre/mcp.yaml`
+
+**Example (Stdio Transport):**
+```yaml
+mcp_servers:
+  postgres:
+    type: stdio
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-postgres"]
+    env:
+      POSTGRES_URL: "${POSTGRES_URL}"
+    enabled: true
+    timeout: 30
+```
+
+**Example (SSE Transport - Remote Server):**
+```yaml
+mcp_servers:
+  remote_api:
+    type: sse
+    url: "https://mcp.example.com/api"
+    headers:
+      Authorization: "Bearer ${API_TOKEN}"
+      X-API-Key: "${API_KEY}"
+    enabled: true
+    timeout: 30
+```
+
+**Environment Variables:**
+- Use `${VAR}` or `$VAR` syntax to reference environment variables
+- Variables expanded at runtime (not stored in config)
+
+### CLI Commands
+
+```bash
+# List configured MCP servers
+uv run sabre list
+
+# Create example config
+uv run sabre init
+
+# Show config file path
+uv run sabre config
+```
+
+### Using MCP Tools
+
+MCP tools are available in `<helpers>` blocks using qualified names:
+
+**Stdio Example (Local PostgreSQL):**
+```python
+<helpers>
+# Query database via MCP Postgres tool
+results = Postgres.query("SELECT * FROM users LIMIT 10")
+
+# Display results
+import pandas as pd
+df = pd.DataFrame(results)
+print(df.to_markdown())
+
+result("Query results shown above")
+</helpers>
+```
+
+**SSE Example (Remote API):**
+```python
+<helpers>
+# Call remote MCP server tool
+data = RemoteAPI.search(query="machine learning", limit=10)
+
+# Process results
+for item in data:
+    print(f"- {item['title']}: {item['url']}")
+
+result("Search results displayed above")
+</helpers>
+```
+
+**Tool Naming:**
+- Format: `ServerName.tool_name`
+- Example: `Postgres.query`, `GitHub.create_pr`
+- Tools are dynamically discovered from connected servers
+
+### Adding New MCP Servers
+
+1. Find or create an MCP server (see [MCP servers](https://github.com/modelcontextprotocol/servers))
+2. Add configuration to `~/.config/sabre/mcp.yaml`
+3. Set required environment variables
+4. Restart SABRE
+5. Tools automatically available in runtime
+
+**Official MCP Servers:**
+- `@modelcontextprotocol/server-postgres` - PostgreSQL database access
+- `@modelcontextprotocol/server-github` - GitHub API integration
+- `@modelcontextprotocol/server-filesystem` - File system access
+- See: https://github.com/modelcontextprotocol/servers
+
+### Implementation Details
+
+**Stdio Transport:**
+- MCP servers run as child processes
+- Communication via JSON-RPC over stdin/stdout
+- Automatic process lifecycle management
+- Graceful reconnection on failure
+
+**Tool Discovery:**
+- Performed at server connection time
+- Results cached in MCPHelperAdapter
+- Tools exposed in system prompt with signatures and descriptions
+
+**Error Handling:**
+- Server connection failures logged but don't prevent startup
+- Tool execution errors returned in `<helpers_result>` for LLM to handle
+- Automatic cleanup on server shutdown
+
+**SSE Transport (Remote Servers):**
+- HTTP-based communication with remote MCP servers
+- Supports custom authentication headers (Bearer tokens, API keys, etc.)
+- JSON-RPC over HTTP POST requests
+- Requires `httpx` package (installed by default)
+- Use for cloud-hosted or third-party MCP servers
+- Example: `type: sse` with `url` and `headers` in config
+
+**Transport Comparison:**
+
+| Feature | Stdio | SSE |
+|---------|-------|-----|
+| Use Case | Local subprocess servers | Remote HTTP servers |
+| Communication | stdin/stdout pipes | HTTP POST requests |
+| Authentication | Environment variables only | Custom HTTP headers |
+| Network | Local only | Remote servers supported |
+| Process Management | Automatic lifecycle | HTTP client pooling |
+| Configuration | `command` + `args` | `url` + `headers` |
 
 ## XDG Directory Compliance
 

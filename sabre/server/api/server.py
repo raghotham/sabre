@@ -42,11 +42,77 @@ class SessionManager:
         self.sessions: dict[str, dict] = {}
         # Track running tasks for cancellation (by request_id)
         self.running_tasks: dict[str, asyncio.Task] = {}
+
+        # Initialize MCP integration
+        self.mcp_manager = None
+        self.mcp_adapter = None
+        self._init_mcp()
+
         # Create orchestrator with executor and runtime
         # ResponseExecutor reads OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL from env
         executor = ResponseExecutor()
-        runtime = PythonRuntime()
+        runtime = PythonRuntime(mcp_adapter=self.mcp_adapter)
         self.orchestrator = Orchestrator(executor, runtime)
+
+    def _init_mcp(self):
+        """Initialize MCP config loader (actual connection happens in async context)."""
+        try:
+            from sabre.server.mcp import MCPConfigLoader
+
+            # Load MCP configurations
+            self.mcp_configs = MCPConfigLoader.load()
+
+            if not self.mcp_configs:
+                logger.info("No MCP servers configured")
+                return
+
+            logger.info(f"Loaded {len(self.mcp_configs)} MCP server configurations")
+
+        except ImportError:
+            logger.debug("MCP integration not available (PyYAML not installed)")
+            self.mcp_configs = []
+        except Exception as e:
+            logger.warning(f"Failed to load MCP configurations: {e}")
+            logger.debug("Continuing without MCP integration")
+            self.mcp_configs = []
+
+    async def connect_mcp_servers(self):
+        """Connect to MCP servers (must be called in async context)."""
+        if not self.mcp_configs:
+            return
+
+        try:
+            from sabre.server.mcp import MCPClientManager, MCPHelperAdapter
+
+            # Create client manager
+            self.mcp_manager = MCPClientManager()
+
+            # Connect to servers
+            await self.mcp_manager.connect_all(self.mcp_configs)
+
+            # Create helper adapter and refresh tools (pass event loop for thread-safe execution)
+            self.mcp_adapter = MCPHelperAdapter(self.mcp_manager, event_loop=asyncio.get_running_loop())
+            await self.mcp_adapter.refresh_tools()
+
+            logger.info(f"MCP integration initialized with {self.mcp_adapter.get_tool_count()} tools from {len(self.mcp_manager.list_servers())} servers")
+
+            # Update runtime with MCP adapter
+            if self.orchestrator and self.orchestrator.runtime:
+                self.orchestrator.runtime.mcp_adapter = self.mcp_adapter
+                self.orchestrator.runtime.reset()  # Refresh namespace with MCP tools
+
+        except Exception as e:
+            logger.error(f"Failed to connect to MCP servers: {e}")
+            logger.debug("Continuing without MCP integration")
+
+    async def disconnect_mcp_servers(self):
+        """Disconnect from MCP servers."""
+        if self.mcp_manager:
+            try:
+                await self.mcp_manager.disconnect_all()
+                logger.info("Disconnected from MCP servers")
+            except Exception as e:
+                logger.error(f"Error disconnecting from MCP servers: {e}")
 
     def get_or_create_session(self, conversation_id: str | None) -> dict:
         """Get existing session or create new one."""
@@ -144,8 +210,18 @@ async def lifespan(app: FastAPI):
         logger.error(f"Playwright check failed: {e}")
         raise
 
+    # Connect to MCP servers
+    try:
+        await manager.connect_mcp_servers()
+    except Exception as e:
+        logger.warning(f"MCP initialization failed: {e}")
+        logger.info("Server starting without MCP integration")
+
     yield
+
+    # Disconnect from MCP servers on shutdown
     logger.info("Shutting down sabre server...")
+    await manager.disconnect_mcp_servers()
 
 
 # Create FastAPI app

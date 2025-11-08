@@ -173,6 +173,9 @@ class Client:
         # Start Esc key monitoring task (only if running in a TTY)
         esc_monitor_task = asyncio.create_task(self._monitor_escape_key())
 
+        # Initialize state before try block to avoid UnboundLocalError in except block
+        thinking_shown = False
+
         try:
             # POST request with streaming response
             async with client.stream(
@@ -196,7 +199,6 @@ class Client:
                 # Reset state for new response
                 self.tree_depth = 0
                 response_started = False
-                thinking_shown = False
 
                 # Stream SSE lines
                 async for line in response.aiter_lines():

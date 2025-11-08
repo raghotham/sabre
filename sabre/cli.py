@@ -239,12 +239,87 @@ async def run_client():
     return await main()
 
 
+def mcp_list():
+    """List configured MCP servers"""
+    try:
+        from sabre.server.mcp import MCPConfigLoader
+
+        configs = MCPConfigLoader.load()
+
+        if not configs:
+            print("No MCP servers configured.")
+            print(f"Create config at: {MCPConfigLoader.get_config_path()}")
+            print("Run: sabre mcp init  to create example config")
+            return 0
+
+        print("Configured MCP Servers:")
+        print()
+
+        for config in configs:
+            status = "enabled" if config.enabled else "disabled"
+            print(f"  {config.name} ({config.type.value}) - {status}")
+            if config.type.value == "stdio":
+                print(f"    Command: {config.command} {' '.join(config.args)}")
+            elif config.type.value == "sse":
+                print(f"    URL: {config.url}")
+            print()
+
+        return 0
+
+    except Exception as e:
+        print(f"Error listing MCP servers: {e}", file=sys.stderr)
+        return 1
+
+
+def mcp_init(force=False):
+    """Initialize MCP configuration"""
+    try:
+        from sabre.server.mcp import MCPConfigLoader
+
+        config_path = MCPConfigLoader.get_config_path()
+
+        if config_path.exists() and not force:
+            print(f"MCP config already exists at: {config_path}")
+            print("Use --force to overwrite")
+            return 1
+
+        MCPConfigLoader.create_example_config()
+        print(f"Created example MCP config at: {config_path}")
+        print()
+        print("Edit this file to add MCP servers, then restart SABRE.")
+        return 0
+
+    except Exception as e:
+        print(f"Error creating MCP config: {e}", file=sys.stderr)
+        return 1
+
+
+def mcp_config():
+    """Show MCP configuration file path"""
+    from sabre.server.mcp import MCPConfigLoader
+
+    config_path = MCPConfigLoader.get_config_path()
+    print(f"MCP configuration file: {config_path}")
+
+    if config_path.exists():
+        print("Status: File exists")
+    else:
+        print("Status: File not found")
+        print("Run: sabre mcp init  to create example config")
+
+    return 0
+
+
 def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(description="SABRE CLI")
     parser.add_argument("--stop", action="store_true", help="Stop the running server")
     parser.add_argument("--clean", action="store_true", help="Clean up all SABRE XDG directories")
     parser.add_argument("--force", action="store_true", help="Skip confirmation prompt (for --clean)")
+
+    # MCP subcommand
+    parser.add_argument("mcp_command", nargs="?", help="MCP subcommand (list, init, config)")
+
     args = parser.parse_args()
 
     # Handle --clean flag
@@ -254,6 +329,19 @@ def main():
     # Handle --stop flag
     if args.stop:
         return stop_server()
+
+    # Handle MCP commands
+    if args.mcp_command:
+        if args.mcp_command == "list":
+            return mcp_list()
+        elif args.mcp_command == "init":
+            return mcp_init(force=args.force)
+        elif args.mcp_command == "config":
+            return mcp_config()
+        else:
+            print(f"Unknown MCP command: {args.mcp_command}", file=sys.stderr)
+            print("Available commands: list, init, config", file=sys.stderr)
+            return 1
 
     # Normal operation: start server and run client
     server_process = None
