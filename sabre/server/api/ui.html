@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SABRE Conversations</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #4ec9b0;
+            margin-bottom: 20px;
+        }
+        .conversations-list {
+            background: #252526;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .conversation-item {
+            padding: 15px;
+            margin-bottom: 10px;
+            background: #2d2d30;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .conversation-item:hover {
+            background: #37373d;
+        }
+        .conversation-id {
+            font-family: 'Monaco', 'Menlo', monospace;
+            color: #4ec9b0;
+            font-size: 14px;
+        }
+        .conversation-meta {
+            color: #858585;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        .events-panel {
+            background: #252526;
+            border-radius: 8px;
+            padding: 20px;
+            display: none;
+        }
+        .events-panel.active {
+            display: block;
+        }
+        .event {
+            padding: 10px;
+            margin-bottom: 10px;
+            background: #2d2d30;
+            border-radius: 4px;
+            border-left: 3px solid #4ec9b0;
+        }
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .event-type {
+            font-weight: bold;
+            color: #4ec9b0;
+        }
+        .event-timestamp {
+            color: #858585;
+            font-size: 12px;
+        }
+        .event-data {
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 12px;
+            background: #1e1e1e;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .event-text {
+            color: #ce9178;
+            white-space: pre-wrap;
+        }
+        .event-code {
+            color: #9cdcfe;
+            white-space: pre-wrap;
+        }
+        .event-result {
+            color: #b5cea8;
+            white-space: pre-wrap;
+        }
+        .back-button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 15px;
+        }
+        .back-button:hover {
+            background: #1177bb;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #858585;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SABRE Conversations</h1>
+
+        <div id="conversationsList" class="conversations-list">
+            <div class="loading">Loading conversations...</div>
+        </div>
+
+        <div id="eventsPanel" class="events-panel">
+            <button class="back-button" onclick="showConversations()">← Back to Conversations</button>
+            <h2 id="conversationTitle"></h2>
+            <div id="eventsList"></div>
+        </div>
+    </div>
+
+    <script>
+        let conversations = [];
+
+        async function loadConversations() {
+            try {
+                const response = await fetch('/v1/conversations');
+                const data = await response.json();
+                conversations = data.conversations;
+                renderConversations();
+            } catch (error) {
+                document.getElementById('conversationsList').innerHTML =
+                    '<div class="loading">Error loading conversations</div>';
+            }
+        }
+
+        function renderConversations() {
+            const list = document.getElementById('conversationsList');
+            if (conversations.length === 0) {
+                list.innerHTML = '<div class="loading">No conversations yet</div>';
+                return;
+            }
+
+            list.innerHTML = conversations.map(conv => `
+                <div class="conversation-item" onclick="viewConversation('${conv.conversation_id}')">
+                    <div class="conversation-id">${conv.conversation_id}</div>
+                    <div class="conversation-meta">
+                        ${conv.event_count} events • Started: ${new Date(conv.start_time).toLocaleString()}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function viewConversation(conversationId) {
+            document.getElementById('conversationsList').style.display = 'none';
+            document.getElementById('eventsPanel').classList.add('active');
+            document.getElementById('conversationTitle').textContent = conversationId;
+            document.getElementById('eventsList').innerHTML = '<div class="loading">Loading events...</div>';
+
+            try {
+                const response = await fetch(`/v1/conversations/${conversationId}`);
+                const data = await response.json();
+                renderEvents(data.events);
+            } catch (error) {
+                document.getElementById('eventsList').innerHTML =
+                    '<div class="loading">Error loading events</div>';
+            }
+        }
+
+        function renderEvents(events) {
+            const list = document.getElementById('eventsList');
+            list.innerHTML = events.map(event => {
+                let dataHtml = '';
+
+                // Special rendering for specific event types
+                if (event.data.text) {
+                    const textPreview = event.data.text.substring(0, 500);
+                    dataHtml = `<div class="event-text">${escapeHtml(textPreview)}${event.data.text.length > 500 ? '...' : ''}</div>`;
+                } else if (event.data.code) {
+                    dataHtml = `<div class="event-code">${escapeHtml(event.data.code)}</div>`;
+                } else if (event.data.result) {
+                    const resultStr = String(event.data.result).substring(0, 300);
+                    dataHtml = `<div class="event-result">${escapeHtml(resultStr)}${String(event.data.result).length > 300 ? '...' : ''}</div>`;
+                } else if (Object.keys(event.data).length > 0) {
+                    dataHtml = `<div class="event-data">${JSON.stringify(event.data, null, 2)}</div>`;
+                }
+
+                return `
+                    <div class="event">
+                        <div class="event-header">
+                            <span class="event-type">${event.event_type}</span>
+                            <span class="event-timestamp">${new Date(event.timestamp).toLocaleString()}</span>
+                        </div>
+                        ${dataHtml}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function showConversations() {
+            document.getElementById('eventsPanel').classList.remove('active');
+            document.getElementById('conversationsList').style.display = 'block';
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Load conversations on page load
+        loadConversations();
+
+        // Auto-refresh every 10 seconds
+        setInterval(loadConversations, 10000);
+    </script>
+</body>
+</html>
