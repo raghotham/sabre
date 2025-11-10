@@ -68,10 +68,15 @@ class MCPClient:
             return
 
         try:
+            # Step 1: Establish transport connection (stdio subprocess or HTTP client)
             if self.config.type == MCPTransportType.STDIO:
                 await self._connect_stdio()
             elif self.config.type == MCPTransportType.SSE:
                 await self._connect_sse()
+
+            # Step 2: Perform MCP protocol initialization handshake
+            # This is required by the MCP specification before making any other requests
+            await self._initialize_protocol()
 
             self.connected = True
             logger.info(f"Connected to MCP server: {self.config.name} ({self.config.type.value})")
@@ -154,6 +159,86 @@ class MCPClient:
                 self.http_client = None
             raise MCPConnectionError(f"Failed to connect via SSE: {e}") from e
 
+    async def _initialize_protocol(self) -> None:
+        """
+        Perform MCP protocol initialization handshake.
+
+        According to the MCP specification, clients must:
+        1. Send 'initialize' request with client info and capabilities
+        2. Receive server info and capabilities in response
+        3. Send 'notifications/initialized' notification
+
+        This must be done before any other requests (like tools/list).
+
+        Raises:
+            MCPProtocolError: If initialization fails
+        """
+        logger.debug(f"[{self.config.name}] Starting MCP protocol initialization")
+
+        # Step 1 & 2: Send initialize request and receive server capabilities
+        init_response = await self._send_request_internal("initialize", {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {
+                "name": "sabre",
+                "version": "1.0.0"
+            }
+        })
+
+        if init_response.is_error:
+            error_msg = init_response.error.get("message", "Unknown error") if init_response.error else "Unknown error"
+            raise MCPProtocolError(f"MCP initialization failed: {error_msg}")
+
+        logger.debug(f"[{self.config.name}] Received server capabilities: {init_response.result}")
+
+        # Step 3: Send initialized notification (no response expected)
+        await self._send_notification("notifications/initialized")
+
+        logger.debug(f"[{self.config.name}] MCP protocol initialization complete")
+
+    async def _send_notification(self, method: str, params: Optional[dict[str, Any]] = None) -> None:
+        """
+        Send JSON-RPC notification (no response expected).
+
+        Notifications are one-way messages that don't expect a response.
+
+        Args:
+            method: JSON-RPC method name
+            params: Optional method parameters
+        """
+        # Build JSON-RPC notification (no 'id' field)
+        notification = {
+            "jsonrpc": "2.0",
+            "method": method,
+        }
+        if params:
+            notification["params"] = params
+
+        notification_json = json.dumps(notification)
+        logger.debug(f"[{self.config.name}] Sending notification: {notification_json}")
+
+        # Send notification based on transport type
+        if self.config.type == MCPTransportType.STDIO:
+            await self._write_stdio(notification)
+        elif self.config.type == MCPTransportType.SSE:
+            # SSE transport typically doesn't use notifications
+            # But if needed, we could POST without expecting response
+            logger.debug(f"[{self.config.name}] Skipping notification for SSE transport")
+
+    async def _write_stdio(self, data: dict) -> None:
+        """
+        Write JSON data to stdio without expecting a response.
+
+        Args:
+            data: Dictionary to serialize and write
+        """
+        if not self.process or not self.process.stdin:
+            raise MCPConnectionError("Process stdin not available")
+
+        json_data = json.dumps(data) if isinstance(data, dict) else data
+        self.process.stdin.write((json_data + "\n").encode())
+        await self.process.stdin.drain()
+
     async def disconnect(self) -> None:
         """Disconnect from MCP server"""
         if not self.connected:
@@ -200,6 +285,25 @@ class MCPClient:
         if not self.connected:
             raise MCPConnectionError(f"Not connected to {self.config.name}")
 
+        return await self._send_request_internal(method, params)
+
+    async def _send_request_internal(self, method: str, params: Optional[dict[str, Any]] = None) -> JSONRPCResponse:
+        """
+        Internal method to send JSON-RPC request without checking connection status.
+
+        This is used during initialization when self.connected is not yet True.
+
+        Args:
+            method: JSON-RPC method name
+            params: Method parameters
+
+        Returns:
+            JSON-RPC response
+
+        Raises:
+            MCPTimeoutError: If request times out
+            MCPProtocolError: If response is invalid
+        """
         # Build JSON-RPC request
         request = JSONRPCRequest(method=method, params=params, id=self.next_id)
         self.next_id += 1

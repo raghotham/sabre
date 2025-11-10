@@ -25,6 +25,19 @@ from sabre.server.mcp.models import (
 from sabre.server.mcp.client import MCPClient
 
 
+def create_init_response(request_id=1):
+    """Helper to create MCP initialization response."""
+    return json.dumps({
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "result": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "serverInfo": {"name": "test-server", "version": "1.0.0"}
+        }
+    }) + "\n"
+
+
 @pytest.fixture
 def stdio_config():
     """Create a stdio transport config for testing."""
@@ -48,6 +61,20 @@ def mock_process():
     process.wait = AsyncMock(return_value=0)
     process.terminate = Mock()
     process.kill = Mock()
+
+    # Mock readline to return MCP initialization response by default
+    # This simulates a proper MCP server that responds to initialize request
+    init_response = json.dumps({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "serverInfo": {"name": "test-server", "version": "1.0.0"}
+        }
+    }) + "\n"
+    process.stdout.readline = AsyncMock(return_value=init_response.encode())
+
     return process
 
 
@@ -157,10 +184,20 @@ async def test_list_tools_caching(stdio_config, mock_process):
     """Test that list_tools caches results."""
     client = MCPClient(stdio_config)
 
-    # Mock response
-    tools_response = {
+    # Mock responses - need to return initialize response first, then tools response
+    init_response = {
         "jsonrpc": "2.0",
         "id": 1,
+        "result": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "serverInfo": {"name": "test-server", "version": "1.0.0"}
+        }
+    }
+
+    tools_response = {
+        "jsonrpc": "2.0",
+        "id": 2,
         "result": {
             "tools": [
                 {
@@ -172,7 +209,13 @@ async def test_list_tools_caching(stdio_config, mock_process):
         },
     }
 
-    mock_process.stdout.readline = AsyncMock(return_value=(json.dumps(tools_response) + "\n").encode())
+    # Return init response first, then tools response
+    mock_process.stdout.readline = AsyncMock(
+        side_effect=[
+            (json.dumps(init_response) + "\n").encode(),
+            (json.dumps(tools_response) + "\n").encode(),
+        ]
+    )
 
     with patch("asyncio.create_subprocess_exec", return_value=mock_process):
         await client.connect()
@@ -195,10 +238,10 @@ async def test_call_tool_success(stdio_config, mock_process):
     """Test successful tool invocation."""
     client = MCPClient(stdio_config)
 
-    # Mock response
+    # Mock responses: init first, then tool response
     tool_response = {
         "jsonrpc": "2.0",
-        "id": 1,
+        "id": 2,
         "result": {
             "content": [
                 {"type": "text", "text": "Tool result"}
@@ -206,7 +249,12 @@ async def test_call_tool_success(stdio_config, mock_process):
         },
     }
 
-    mock_process.stdout.readline = AsyncMock(return_value=(json.dumps(tool_response) + "\n").encode())
+    mock_process.stdout.readline = AsyncMock(
+        side_effect=[
+            create_init_response(1).encode(),
+            (json.dumps(tool_response) + "\n").encode(),
+        ]
+    )
 
     with patch("asyncio.create_subprocess_exec", return_value=mock_process):
         await client.connect()
@@ -227,14 +275,19 @@ async def test_call_tool_error(stdio_config, mock_process):
     """Test tool invocation with error response."""
     client = MCPClient(stdio_config)
 
-    # Mock error response
+    # Mock responses: init first, then error response
     error_response = {
         "jsonrpc": "2.0",
-        "id": 1,
+        "id": 2,
         "error": {"code": -32601, "message": "Tool not found"},
     }
 
-    mock_process.stdout.readline = AsyncMock(return_value=(json.dumps(error_response) + "\n").encode())
+    mock_process.stdout.readline = AsyncMock(
+        side_effect=[
+            create_init_response(1).encode(),
+            (json.dumps(error_response) + "\n").encode(),
+        ]
+    )
 
     with patch("asyncio.create_subprocess_exec", return_value=mock_process):
         await client.connect()
@@ -250,8 +303,16 @@ async def test_timeout_handling(stdio_config, mock_process):
     """Test request timeout handling."""
     client = MCPClient(stdio_config)
 
-    # Mock timeout scenario
+    # Mock timeout scenario - return init response then timeout
+    call_count = 0
+
     async def timeout_readline():
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            # First call - return init response
+            return create_init_response(1).encode()
+        # Second call - timeout
         await asyncio.sleep(10)  # Longer than timeout
         return b""
 
@@ -271,8 +332,13 @@ async def test_invalid_json_response(stdio_config, mock_process):
     """Test handling of invalid JSON in response."""
     client = MCPClient(stdio_config)
 
-    # Mock invalid JSON response
-    mock_process.stdout.readline = AsyncMock(return_value=b"invalid json\n")
+    # Mock responses: init first, then invalid JSON
+    mock_process.stdout.readline = AsyncMock(
+        side_effect=[
+            create_init_response(1).encode(),
+            b"invalid json\n",
+        ]
+    )
 
     with patch("asyncio.create_subprocess_exec", return_value=mock_process):
         await client.connect()
@@ -288,8 +354,13 @@ async def test_empty_response(stdio_config, mock_process):
     """Test handling of empty response."""
     client = MCPClient(stdio_config)
 
-    # Mock empty response
-    mock_process.stdout.readline = AsyncMock(return_value=b"\n")
+    # Mock responses: init first, then empty response
+    mock_process.stdout.readline = AsyncMock(
+        side_effect=[
+            create_init_response(1).encode(),
+            b"\n",
+        ]
+    )
 
     with patch("asyncio.create_subprocess_exec", return_value=mock_process):
         await client.connect()
@@ -318,10 +389,10 @@ async def test_list_resources(stdio_config, mock_process):
     """Test listing MCP resources."""
     client = MCPClient(stdio_config)
 
-    # Mock response
+    # Mock responses: init first, then resources
     resources_response = {
         "jsonrpc": "2.0",
-        "id": 1,
+        "id": 2,
         "result": {
             "resources": [
                 {
@@ -334,7 +405,12 @@ async def test_list_resources(stdio_config, mock_process):
         },
     }
 
-    mock_process.stdout.readline = AsyncMock(return_value=(json.dumps(resources_response) + "\n").encode())
+    mock_process.stdout.readline = AsyncMock(
+        side_effect=[
+            create_init_response(1).encode(),
+            (json.dumps(resources_response) + "\n").encode(),
+        ]
+    )
 
     with patch("asyncio.create_subprocess_exec", return_value=mock_process):
         await client.connect()
@@ -352,10 +428,10 @@ async def test_read_resource(stdio_config, mock_process):
     """Test reading an MCP resource."""
     client = MCPClient(stdio_config)
 
-    # Mock response
+    # Mock responses: init first, then resource content
     resource_response = {
         "jsonrpc": "2.0",
-        "id": 1,
+        "id": 2,
         "result": {
             "contents": [
                 {
@@ -367,7 +443,12 @@ async def test_read_resource(stdio_config, mock_process):
         },
     }
 
-    mock_process.stdout.readline = AsyncMock(return_value=(json.dumps(resource_response) + "\n").encode())
+    mock_process.stdout.readline = AsyncMock(
+        side_effect=[
+            create_init_response(1).encode(),
+            (json.dumps(resource_response) + "\n").encode(),
+        ]
+    )
 
     with patch("asyncio.create_subprocess_exec", return_value=mock_process):
         await client.connect()
@@ -408,10 +489,24 @@ def mock_http_client():
 @pytest.mark.asyncio
 async def test_sse_connect(sse_config, mock_http_client):
     """Test connecting to SSE server."""
-    # Mock successful connection test (health check)
-    mock_response = Mock()
-    mock_response.status_code = 200
-    mock_http_client.get.return_value = mock_response
+    # Mock successful connection test (health check) and initialize
+    mock_health_response = Mock()
+    mock_health_response.status_code = 200
+    mock_http_client.get.return_value = mock_health_response
+
+    # Mock initialize request response
+    mock_init_response = Mock()
+    mock_init_response.status_code = 200
+    mock_init_response.json.return_value = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "serverInfo": {"name": "test-sse-server", "version": "1.0.0"}
+        }
+    }
+    mock_http_client.post.return_value = mock_init_response
 
     with patch("sabre.server.mcp.client.httpx.AsyncClient", return_value=mock_http_client):
         client = MCPClient(sse_config)
@@ -419,17 +514,16 @@ async def test_sse_connect(sse_config, mock_http_client):
 
         assert client.connected is True
         assert client.http_client is not None
-        # May call health endpoint or not, depending on availability
-        # assert mock_http_client.get.called  # Optional health check
+        # Should have made initialize POST request
+        assert mock_http_client.post.called
 
     print("✓ SSE connection works")
 
 
 @pytest.mark.asyncio
 async def test_sse_connect_failure(sse_config):
-    """Test SSE connection with actual tool call failure."""
-    # Connection itself won't fail (we defer validation to first request)
-    # But tool calls should fail if the server isn't responding correctly
+    """Test SSE connection failure during initialization."""
+    # Initialize request fails with 404
     mock_http_client = Mock()
     mock_response = Mock()
     mock_response.status_code = 404
@@ -441,13 +535,9 @@ async def test_sse_connect_failure(sse_config):
     with patch("sabre.server.mcp.client.httpx.AsyncClient", return_value=mock_http_client):
         client = MCPClient(sse_config)
 
-        # Connection succeeds (deferred validation)
-        await client.connect()
-        assert client.connected is True
-
-        # But actual tool call should fail
-        with pytest.raises(MCPProtocolError, match="HTTP 404"):
-            await client._send_request("tools/list")
+        # Connection should fail during initialization
+        with pytest.raises(MCPConnectionError, match="HTTP 404"):
+            await client.connect()
 
     print("✓ SSE connection failure handled correctly")
 
@@ -455,9 +545,23 @@ async def test_sse_connect_failure(sse_config):
 @pytest.mark.asyncio
 async def test_sse_disconnect(sse_config, mock_http_client):
     """Test disconnecting from SSE server."""
-    mock_response = Mock()
-    mock_response.status_code = 200
-    mock_http_client.get.return_value = mock_response
+    mock_health_response = Mock()
+    mock_health_response.status_code = 200
+    mock_http_client.get.return_value = mock_health_response
+
+    # Mock initialize response
+    mock_init_response = Mock()
+    mock_init_response.status_code = 200
+    mock_init_response.json.return_value = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "serverInfo": {"name": "test-sse-server", "version": "1.0.0"}
+        }
+    }
+    mock_http_client.post.return_value = mock_init_response
 
     with patch("sabre.server.mcp.client.httpx.AsyncClient", return_value=mock_http_client):
         client = MCPClient(sse_config)
@@ -480,10 +584,20 @@ async def test_sse_list_tools(sse_config, mock_http_client):
     mock_get_response.status_code = 200
     mock_http_client.get.return_value = mock_get_response
 
-    # Mock tools/list response
-    tools_response = {
+    # Mock initialize response, then tools/list response
+    init_response = {
         "jsonrpc": "2.0",
         "id": 1,
+        "result": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "serverInfo": {"name": "test-sse-server", "version": "1.0.0"}
+        }
+    }
+
+    tools_response = {
+        "jsonrpc": "2.0",
+        "id": 2,
         "result": {
             "tools": [
                 {
@@ -499,10 +613,16 @@ async def test_sse_list_tools(sse_config, mock_http_client):
         },
     }
 
-    mock_post_response = Mock()
-    mock_post_response.status_code = 200
-    mock_post_response.json.return_value = tools_response
-    mock_http_client.post.return_value = mock_post_response
+    # Use side_effect to return different responses for each POST call
+    mock_init_response = Mock()
+    mock_init_response.status_code = 200
+    mock_init_response.json.return_value = init_response
+
+    mock_tools_response = Mock()
+    mock_tools_response.status_code = 200
+    mock_tools_response.json.return_value = tools_response
+
+    mock_http_client.post = AsyncMock(side_effect=[mock_init_response, mock_tools_response])
 
     with patch("sabre.server.mcp.client.httpx.AsyncClient", return_value=mock_http_client):
         client = MCPClient(sse_config)
@@ -514,11 +634,8 @@ async def test_sse_list_tools(sse_config, mock_http_client):
         assert tools[0].name == "search"
         assert tools[0].description == "Search the web"
 
-        # Verify POST was called correctly
-        mock_http_client.post.assert_called_once()
-        call_args = mock_http_client.post.call_args
-        assert call_args[0][0] == sse_config.url
-        assert call_args[1]["json"]["method"] == "tools/list"
+        # Verify POST was called twice (initialize + tools/list)
+        assert mock_http_client.post.call_count == 2
 
     print("✓ SSE list_tools works")
 
@@ -531,19 +648,34 @@ async def test_sse_call_tool(sse_config, mock_http_client):
     mock_get_response.status_code = 200
     mock_http_client.get.return_value = mock_get_response
 
-    # Mock tool call response
-    tool_response = {
+    # Mock initialize response, then tool call response
+    init_response = {
         "jsonrpc": "2.0",
         "id": 1,
+        "result": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "serverInfo": {"name": "test-sse-server", "version": "1.0.0"}
+        }
+    }
+
+    tool_response = {
+        "jsonrpc": "2.0",
+        "id": 2,
         "result": {
             "content": [{"type": "text", "text": "Search results here"}]
         },
     }
 
-    mock_post_response = Mock()
-    mock_post_response.status_code = 200
-    mock_post_response.json.return_value = tool_response
-    mock_http_client.post.return_value = mock_post_response
+    mock_init_response = Mock()
+    mock_init_response.status_code = 200
+    mock_init_response.json.return_value = init_response
+
+    mock_tool_response = Mock()
+    mock_tool_response.status_code = 200
+    mock_tool_response.json.return_value = tool_response
+
+    mock_http_client.post = AsyncMock(side_effect=[mock_init_response, mock_tool_response])
 
     with patch("sabre.server.mcp.client.httpx.AsyncClient", return_value=mock_http_client):
         client = MCPClient(sse_config)
@@ -560,13 +692,13 @@ async def test_sse_call_tool(sse_config, mock_http_client):
 
 @pytest.mark.asyncio
 async def test_sse_http_error(sse_config, mock_http_client):
-    """Test handling HTTP errors in SSE."""
+    """Test handling HTTP errors in SSE during initialization."""
     # Mock connection
     mock_get_response = Mock()
     mock_get_response.status_code = 200
     mock_http_client.get.return_value = mock_get_response
 
-    # Mock error response
+    # Mock error response for initialize request
     mock_post_response = Mock()
     mock_post_response.status_code = 500
     mock_post_response.text = "Internal Server Error"
@@ -574,10 +706,10 @@ async def test_sse_http_error(sse_config, mock_http_client):
 
     with patch("sabre.server.mcp.client.httpx.AsyncClient", return_value=mock_http_client):
         client = MCPClient(sse_config)
-        await client.connect()
 
-        with pytest.raises(MCPProtocolError, match="HTTP 500"):
-            await client._send_request("tools/list")
+        # Connection should fail during initialization with HTTP 500
+        with pytest.raises(MCPConnectionError, match="HTTP 500"):
+            await client.connect()
 
     print("✓ SSE HTTP error handling works")
 
