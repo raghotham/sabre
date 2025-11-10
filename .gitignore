@@ -43,5 +43,6 @@ tests/comparisons*
 .build-cache
 .coverage
 htmlcov/
+tmp/
 
 **/.claude/settings.local.json

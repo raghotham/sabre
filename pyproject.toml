@@ -69,6 +69,7 @@ Repository = "https://github.com/9600dev/sabre"
 sabre = "sabre.cli:main"
 sabre-server = "sabre.server.__main__:main"
 sabre-client = "sabre.client.__main__:main"
+datascibench = "sabre.eval.datascibench:main"
 
 [project.optional-dependencies]
 test = [
