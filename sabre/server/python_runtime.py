@@ -26,6 +26,8 @@ from sabre.server.helpers.matplotlib_helpers import matplotlib_to_image, generat
 from sabre.server.helpers.introspection import get_helper_signatures
 from sabre.server.helpers.fs import write_file, read_file
 from sabre.server.helpers.sabre_call import SabreCall
+from sabre.server.helpers.database import DatabaseHelpers
+from sabre.server.helpers.semantic_database import SemanticDatabaseHelpers
 from sabre.common.models.messages import Content, ImageContent, TextContent, PdfContent, FileContent
 
 if TYPE_CHECKING:
@@ -111,6 +113,8 @@ class PythonRuntime:
             "Web": Web,
             "download": download,
             "download_csv": download_csv,
+            "DatabaseHelpers": DatabaseHelpers,
+            "SemanticDatabaseHelpers": SemanticDatabaseHelpers,
             # Instance-based helpers (need runtime context)
             "llm_call": llm_call,
             "llm_bind": llm_bind,

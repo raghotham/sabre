@@ -247,11 +247,11 @@ manager = SessionManager()
 
 @app.get("/")
 async def root():
-    """Health check endpoint."""
-    return {"status": "ok", "service": "sabre"}
+    """Root endpoint - reserved for future UI."""
+    return {"status": "ok", "service": "sabre", "message": "SABRE API - use /v1/ endpoints"}
 
 
-@app.get("/health")
+@app.get("/v1/health")
 async def health():
     """Health check with details."""
     return {
@@ -262,7 +262,7 @@ async def health():
     }
 
 
-@app.get("/files/{conversation_id}/{filename}")
+@app.get("/v1/files/{conversation_id}/{filename}")
 async def serve_file(conversation_id: str, filename: str):
     """
     Serve files generated during conversation (e.g., matplotlib images, saved data).
@@ -286,7 +286,7 @@ async def serve_file(conversation_id: str, filename: str):
     return FileResponse(file_path)
 
 
-@app.post("/message")
+@app.post("/v1/message")
 async def message_endpoint(request: Request):
     """
     HTTP SSE endpoint for chat messages.
@@ -494,7 +494,7 @@ async def message_endpoint(request: Request):
     )
 
 
-@app.post("/cancel/{request_id}")
+@app.post("/v1/cancel/{request_id}")
 async def cancel_request(request_id: str):
     """
     Cancel a running request by ID.
@@ -511,7 +511,7 @@ async def cancel_request(request_id: str):
         return {"status": "not_found", "request_id": request_id}
 
 
-@app.post("/clear")
+@app.post("/v1/clear")
 async def clear_conversation(request: Request):
     """Clear conversation by conversation_id."""
     data = await request.json()

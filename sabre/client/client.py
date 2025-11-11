@@ -69,7 +69,7 @@ class Client:
                 logger.info(f"Sending cancel request for {self.current_request_id}")
                 async with httpx.AsyncClient() as client:
                     response = await client.post(
-                        f"{self.server_url}/cancel/{self.current_request_id}",
+                        f"{self.server_url}/v1/cancel/{self.current_request_id}",
                         timeout=5.0,
                     )
                     if response.status_code == 200:
@@ -180,7 +180,7 @@ class Client:
             # POST request with streaming response
             async with client.stream(
                 "POST",
-                f"{self.server_url}/message",
+                f"{self.server_url}/v1/message",
                 json={
                     "type": "message",
                     "content": user_input,
