@@ -175,6 +175,14 @@ async def root():
     return {"status": "ok", "service": "sabre", "message": "SABRE API - use /v1/ endpoints"}
 
 
+@app.get("/favicon.ico")
+async def favicon():
+    """Return 204 No Content for favicon requests to silence browser warnings."""
+    from fastapi.responses import Response
+
+    return Response(status_code=204)
+
+
 @app.get("/v1/health")
 async def health():
     """Health check with details."""
