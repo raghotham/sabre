@@ -96,7 +96,7 @@ class ConversationLogger:
 
             conversation_id = conv_file.stem
 
-            # Read first and last events
+            # Read all events
             with open(conv_file) as f:
                 lines = f.readlines()
 
@@ -106,12 +106,26 @@ class ConversationLogger:
             first_event = json.loads(lines[0])
             last_event = json.loads(lines[-1])
 
+            # Extract first user message for preview
+            first_message = None
+            for line in lines:
+                event = json.loads(line)
+                # Look for ResponseTextEvent or similar that contains user input
+                # The first event typically contains the user input in metadata
+                if event.get("data") and isinstance(event["data"], dict):
+                    # Check for text in various possible fields
+                    text = event["data"].get("text") or event["data"].get("message") or event["data"].get("content")
+                    if text and len(text.strip()) > 0:
+                        first_message = text[:100]
+                        break
+
             conversations.append(
                 {
                     "conversation_id": conversation_id,
                     "start_time": first_event["timestamp"],
                     "end_time": last_event["timestamp"],
                     "event_count": len(lines),
+                    "preview": first_message,
                 }
             )
 

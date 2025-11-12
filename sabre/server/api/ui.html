@@ -155,11 +155,18 @@
             list.innerHTML = conversations.map(conv => `
                 <div class="conversation-item" onclick="viewConversation('${conv.conversation_id}')">
                     <div class="conversation-id">${conv.conversation_id}</div>
+                    ${conv.preview ? `<div class="conversation-meta" style="color: #b0b0b0; margin: 5px 0;">${escapeHtml(conv.preview)}</div>` : ''}
                     <div class="conversation-meta">
                         ${conv.event_count} events • Started: ${new Date(conv.start_time).toLocaleString()}
                     </div>
                 </div>
             `).join('');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
 
         async function viewConversation(conversationId) {
