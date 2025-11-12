@@ -903,7 +903,7 @@ class Orchestrator:
 
         # Generate URL (assumes server on localhost:8011 or PORT)
         port = os.getenv("PORT", "8011")
-        url = f"http://localhost:{port}/files/{conversation_id}/{filename}"
+        url = f"http://localhost:{port}/v1/files/{conversation_id}/{filename}"
         logger.info(f"💾 Saved image to: {file_path}")
         logger.debug(f"   Accessible at: {url}")
 
