@@ -169,7 +169,16 @@
             return div.innerHTML;
         }
 
-        async function viewConversation(conversationId) {
+        async function viewConversation(conversationId, pushState = true) {
+            // Update URL
+            if (pushState) {
+                history.pushState(
+                    { conversationId },
+                    '',
+                    `/?conversation=${conversationId}`
+                );
+            }
+
             document.getElementById('conversationsList').style.display = 'none';
             document.getElementById('eventsPanel').classList.add('active');
             document.getElementById('conversationTitle').textContent = conversationId;
@@ -215,21 +224,45 @@
             }).join('');
         }
 
-        function showConversations() {
+        function showConversations(pushState = true) {
+            // Update URL to remove conversation parameter
+            if (pushState) {
+                history.pushState({}, '', '/');
+            }
+
             document.getElementById('eventsPanel').classList.remove('active');
             document.getElementById('conversationsList').style.display = 'block';
         }
 
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
+        // Handle browser back/forward buttons
+        window.addEventListener('popstate', (event) => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const conversationId = urlParams.get('conversation');
+
+            if (conversationId) {
+                viewConversation(conversationId, false);
+            } else {
+                showConversations(false);
+            }
+        });
+
+        // Check URL on page load for direct links
+        async function initializeApp() {
+            await loadConversations();
+
+            // Check if URL has a conversation parameter
+            const urlParams = new URLSearchParams(window.location.search);
+            const conversationId = urlParams.get('conversation');
+
+            if (conversationId) {
+                viewConversation(conversationId, false);
+            }
         }
 
-        // Load conversations on page load
-        loadConversations();
+        // Initialize app
+        initializeApp();
 
-        // Auto-refresh every 10 seconds
+        // Auto-refresh conversations list every 10 seconds
         setInterval(loadConversations, 10000);
     </script>
 </body>
