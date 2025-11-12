@@ -7,6 +7,7 @@ Manages connections to multiple MCP servers and provides a registry for tool rou
 import asyncio
 import logging
 from typing import Optional
+from datetime import datetime
 
 from .models import (
     MCPServerConfig,
@@ -25,33 +26,73 @@ class MCPClientManager:
 
     Responsibilities:
     - Connect/disconnect to MCP servers
-    - Maintain server registry (name → client)
+    - Maintain server registry (UUID → client, name → UUID mappings)
     - Provide access to connected clients
     - Handle connection lifecycle
+    - Persist connector state (if connector_store provided)
     """
 
-    def __init__(self):
-        """Initialize MCP client manager"""
+    def __init__(self, connector_store=None):
+        """
+        Initialize MCP client manager.
+
+        Args:
+            connector_store: Optional ConnectorStore for persistence
+        """
+        # Core storage: UUID → MCPClient
         self.clients: dict[str, MCPClient] = {}
+        # Core configs: UUID → MCPServerConfig
         self.configs: dict[str, MCPServerConfig] = {}
 
-    async def connect(self, config: MCPServerConfig) -> None:
+        # UUID mappings for lookup
+        self.id_to_name: dict[str, str] = {}  # UUID → name
+        self.name_to_id: dict[str, str] = {}  # name → UUID
+
+        # Persistence layer (optional)
+        self.connector_store = connector_store
+
+    async def connect(self, config: MCPServerConfig) -> str:
         """
-        Connect to an MCP server.
+        Connect to an MCP server and persist config.
 
         Args:
             config: Server configuration
 
+        Returns:
+            connector_id: UUID of the connected connector
+
         Raises:
             MCPConnectionError: If connection fails
         """
-        if not config.enabled:
-            logger.info(f"Skipping disabled MCP server: {config.name}")
-            return
+        # Check if already registered (in configs)
+        if config.id in self.configs:
+            logger.warning(f"Connector already registered: {config.name} (id={config.id})")
+            return config.id
 
-        if config.name in self.clients:
-            logger.warning(f"Already connected to MCP server: {config.name}")
-            return
+        # Store config and mappings first (even if disabled)
+        self.configs[config.id] = config
+        self.id_to_name[config.id] = config.name
+        self.name_to_id[config.name] = config.id
+
+        # Persist if store available
+        if self.connector_store:
+            self.connector_store.save(config.id, config)
+
+        # If disabled, don't create client
+        if not config.enabled:
+            logger.info(f"Registered disabled MCP server: {config.name} (id={config.id})")
+            return config.id
+
+        # Check if already connected by UUID
+        if config.id in self.clients:
+            logger.warning(f"Already connected to MCP server: {config.name} (id={config.id})")
+            return config.id
+
+        # Check if name already exists (different UUID)
+        if config.name in self.name_to_id and self.name_to_id[config.name] != config.id:
+            existing_id = self.name_to_id[config.name]
+            logger.warning(f"Connector name '{config.name}' already exists with different ID: {existing_id}")
+            # Allow it but warn (users might want multiple connectors with same name)
 
         try:
             # Create and connect client
@@ -60,14 +101,26 @@ class MCPClientManager:
 
             # Discover tools
             tools = await client.list_tools()
-            logger.info(f"Connected to MCP server '{config.name}' with {len(tools)} tools: {[t.name for t in tools]}")
+            logger.info(f"Connected to MCP server '{config.name}' (id={config.id}) with {len(tools)} tools: {[t.name for t in tools]}")
 
-            # Store client and config
-            self.clients[config.name] = client
-            self.configs[config.name] = config
+            # Store client by UUID
+            self.clients[config.id] = client
+
+            return config.id
 
         except Exception as e:
             logger.error(f"Failed to connect to MCP server '{config.name}': {e}")
+
+            # Clean up on connection failure
+            if config.id in self.configs:
+                del self.configs[config.id]
+            if config.id in self.id_to_name:
+                del self.id_to_name[config.id]
+            if config.name in self.name_to_id and self.name_to_id[config.name] == config.id:
+                del self.name_to_id[config.name]
+            if self.connector_store:
+                self.connector_store.delete(config.id)
+
             raise MCPConnectionError(f"Failed to connect to {config.name}: {e}") from e
 
     async def connect_all(self, configs: list[MCPServerConfig]) -> None:
@@ -87,26 +140,42 @@ class MCPClientManager:
                 logger.error(f"Failed to connect to {config.name}, skipping: {e}")
                 # Continue with other servers
 
-    async def disconnect(self, name: str) -> None:
+    async def disconnect(self, connector_id: str) -> None:
         """
-        Disconnect from an MCP server.
+        Disconnect and remove an MCP connector by UUID.
 
         Args:
-            name: Server name
+            connector_id: UUID of the connector
 
         Raises:
-            MCPServerNotFoundError: If server not found
+            MCPServerNotFoundError: If connector not found
         """
-        if name not in self.clients:
-            raise MCPServerNotFoundError(name)
+        if connector_id not in self.configs:
+            raise MCPServerNotFoundError(connector_id)
 
-        client = self.clients[name]
-        await client.disconnect()
+        config = self.configs[connector_id]
+        name = config.name
 
-        del self.clients[name]
-        del self.configs[name]
+        # Disconnect client if connected
+        if connector_id in self.clients:
+            client = self.clients[connector_id]
+            await client.disconnect()
+            del self.clients[connector_id]
 
-        logger.info(f"Disconnected from MCP server: {name}")
+        # Remove config
+        del self.configs[connector_id]
+
+        # Update mappings
+        if connector_id in self.id_to_name:
+            del self.id_to_name[connector_id]
+        if name in self.name_to_id and self.name_to_id[name] == connector_id:
+            del self.name_to_id[name]
+
+        # Remove from persistence
+        if self.connector_store:
+            self.connector_store.delete(connector_id)
+
+        logger.info(f"Disconnected from MCP server: {name} (id={connector_id})")
 
     async def disconnect_all(self) -> None:
         """Disconnect from all MCP servers"""
@@ -118,69 +187,93 @@ class MCPClientManager:
             except Exception as e:
                 logger.error(f"Error disconnecting from {name}: {e}")
 
-    async def reconnect(self, name: str) -> None:
+    async def reconnect(self, connector_id: str) -> None:
         """
-        Reconnect to an MCP server.
+        Reconnect to an MCP server by UUID.
 
         Args:
-            name: Server name
+            connector_id: UUID of the connector
 
         Raises:
-            MCPServerNotFoundError: If server not found in configs
+            MCPServerNotFoundError: If connector not found in configs
         """
-        if name not in self.configs:
-            raise MCPServerNotFoundError(name)
+        if connector_id not in self.configs:
+            raise MCPServerNotFoundError(connector_id)
 
-        config = self.configs[name]
+        config = self.configs[connector_id]
 
         # Disconnect if connected
-        if name in self.clients:
+        if connector_id in self.clients:
             try:
-                await self.disconnect(name)
+                await self.disconnect(connector_id)
             except Exception as e:
                 logger.warning(f"Error during disconnect before reconnect: {e}")
 
         # Reconnect
         await self.connect(config)
 
-    def get_client(self, name: str) -> MCPClient:
+    def get_client(self, connector_id: str) -> MCPClient:
         """
-        Get MCP client for a server.
+        Get MCP client for a connector by UUID.
 
         Args:
-            name: Server name
+            connector_id: UUID of the connector
 
         Returns:
             MCP client instance
 
         Raises:
-            MCPServerNotFoundError: If server not found
+            MCPServerNotFoundError: If connector not found
         """
-        if name not in self.clients:
-            raise MCPServerNotFoundError(name)
+        if connector_id not in self.clients:
+            raise MCPServerNotFoundError(connector_id)
 
-        return self.clients[name]
+        return self.clients[connector_id]
 
-    def has_server(self, name: str) -> bool:
+    def get_client_by_name(self, name: str) -> Optional[MCPClient]:
         """
-        Check if server is connected.
+        Get MCP client by connector name.
 
         Args:
-            name: Server name
+            name: Connector name
 
         Returns:
-            True if server is connected
+            MCP client instance or None if not found
         """
-        return name in self.clients
+        connector_id = self.name_to_id.get(name)
+        if connector_id:
+            return self.clients.get(connector_id)
+        return None
+
+    def has_connector(self, connector_id: str) -> bool:
+        """
+        Check if connector is registered by UUID.
+
+        Args:
+            connector_id: UUID of the connector
+
+        Returns:
+            True if connector is registered (even if disabled)
+        """
+        return connector_id in self.configs
+
+    def list_connector_ids(self) -> list[str]:
+        """
+        Get list of registered connector UUIDs.
+
+        Returns:
+            List of connector UUIDs (includes both enabled and disabled)
+        """
+        return list(self.configs.keys())
 
     def list_servers(self) -> list[str]:
         """
-        Get list of connected server names.
+        Get list of registered server names (for backward compatibility).
 
         Returns:
-            List of server names
+            List of server names (includes both enabled and disabled)
         """
-        return list(self.clients.keys())
+        return [self.id_to_name.get(cid, "unknown") for cid in self.configs.keys()]
 
     async def get_all_tools(self) -> dict[str, list[MCPTool]]:
         """
@@ -238,9 +331,40 @@ class MCPClientManager:
 
         return health_status
 
+    def get_connector_info(self, connector_id: str) -> dict:
+        """
+        Get information about a connector by UUID.
+
+        Args:
+            connector_id: UUID of the connector
+
+        Returns:
+            Dictionary with connector info
+
+        Raises:
+            MCPServerNotFoundError: If connector not found
+        """
+        if connector_id not in self.configs:
+            raise MCPServerNotFoundError(connector_id)
+
+        config = self.configs[connector_id]
+        client = self.clients.get(connector_id)
+
+        return {
+            "id": connector_id,
+            "name": config.name,
+            "type": config.type.value,
+            "enabled": config.enabled,
+            "connected": client.is_connected() if client else False,
+            "tools_count": len(client.tools_cache) if client and client.tools_cache else 0,
+            "source": config.source,
+            "created_at": config.created_at,
+            "updated_at": config.updated_at,
+        }
+
     def get_server_info(self, name: str) -> dict:
         """
-        Get information about a server.
+        Get information about a server by name (backward compatibility).
 
         Args:
             name: Server name
@@ -251,28 +375,170 @@ class MCPClientManager:
         Raises:
             MCPServerNotFoundError: If server not found
         """
-        if name not in self.clients:
+        connector_id = self.name_to_id.get(name)
+        if not connector_id:
             raise MCPServerNotFoundError(name)
 
-        config = self.configs[name]
-        client = self.clients[name]
+        return self.get_connector_info(connector_id)
 
-        return {
-            "name": name,
-            "type": config.type.value,
-            "enabled": config.enabled,
-            "connected": client.is_connected(),
-            "tools_count": len(client.tools_cache) if client.tools_cache else 0,
-        }
+    def get_all_connector_info(self) -> list[dict]:
+        """
+        Get information about all connectors (including disabled ones).
+
+        Returns:
+            List of connector info dictionaries
+        """
+        return [self.get_connector_info(cid) for cid in self.configs.keys()]
 
     def get_all_server_info(self) -> list[dict]:
         """
-        Get information about all servers.
+        Get information about all servers (backward compatibility).
 
         Returns:
             List of server info dictionaries
         """
-        return [self.get_server_info(name) for name in self.clients.keys()]
+        return self.get_all_connector_info()
+
+    async def get_connector_tools(self, connector_id: str) -> list[MCPTool]:
+        """
+        Get tools for a specific connector by UUID.
+
+        Args:
+            connector_id: UUID of the connector
+
+        Returns:
+            List of tools from the connector
+
+        Raises:
+            MCPServerNotFoundError: If connector not found
+        """
+        if connector_id not in self.clients:
+            raise MCPServerNotFoundError(connector_id)
+
+        client = self.clients[connector_id]
+        return await client.list_tools()
+
+    async def update_connector(self, connector_id: str, updates: dict) -> None:
+        """
+        Update connector configuration and reconnect.
+
+        Args:
+            connector_id: UUID of connector
+            updates: Partial configuration updates
+
+        Raises:
+            MCPServerNotFoundError: If connector not found
+        """
+        if connector_id not in self.configs:
+            raise MCPServerNotFoundError(connector_id)
+
+        config = self.configs[connector_id]
+
+        # Apply updates
+        if "name" in updates:
+            # Update name mapping
+            old_name = config.name
+            new_name = updates["name"]
+            if old_name in self.name_to_id:
+                del self.name_to_id[old_name]
+            self.name_to_id[new_name] = connector_id
+            self.id_to_name[connector_id] = new_name
+            config.name = new_name
+
+        if "command" in updates:
+            config.command = updates["command"]
+        if "args" in updates:
+            config.args = updates["args"]
+        if "env" in updates:
+            config.env = updates["env"]
+        if "url" in updates:
+            config.url = updates["url"]
+        if "headers" in updates:
+            config.headers = updates["headers"]
+        if "timeout" in updates:
+            config.timeout = updates["timeout"]
+        if "enabled" in updates:
+            config.enabled = updates["enabled"]
+
+        # Update timestamp
+        config.updated_at = datetime.now().isoformat()
+
+        # Persist changes
+        if self.connector_store:
+            self.connector_store.save(connector_id, config)
+
+        # Reconnect to apply changes
+        await self.reconnect(connector_id)
+
+    async def enable_connector(self, connector_id: str) -> None:
+        """
+        Enable and connect a disabled connector.
+
+        Args:
+            connector_id: UUID of connector
+
+        Raises:
+            MCPServerNotFoundError: If connector not found
+        """
+        if connector_id not in self.configs:
+            raise MCPServerNotFoundError(connector_id)
+
+        config = self.configs[connector_id]
+        config.enabled = True
+        config.updated_at = datetime.now().isoformat()
+
+        # Persist changes
+        if self.connector_store:
+            self.connector_store.save(connector_id, config)
+
+        # Connect if not already connected
+        if connector_id not in self.clients:
+            try:
+                # Create and connect client directly (don't call connect() which checks if already registered)
+                client = MCPClient(config)
+                await client.connect()
+
+                # Discover tools
+                tools = await client.list_tools()
+                logger.info(f"Connected to MCP server '{config.name}' (id={config.id}) with {len(tools)} tools: {[t.name for t in tools]}")
+
+                # Store client
+                self.clients[config.id] = client
+            except Exception as e:
+                logger.error(f"Failed to enable connector '{config.name}': {e}")
+                # Revert enabled state on failure
+                config.enabled = False
+                if self.connector_store:
+                    self.connector_store.save(connector_id, config)
+                raise MCPConnectionError(f"Failed to enable {config.name}: {e}") from e
+
+    async def disable_connector(self, connector_id: str) -> None:
+        """
+        Disable and disconnect a connector without removing it.
+
+        Args:
+            connector_id: UUID of connector
+
+        Raises:
+            MCPServerNotFoundError: If connector not found
+        """
+        if connector_id not in self.configs:
+            raise MCPServerNotFoundError(connector_id)
+
+        config = self.configs[connector_id]
+        config.enabled = False
+        config.updated_at = datetime.now().isoformat()
+
+        # Persist changes
+        if self.connector_store:
+            self.connector_store.save(connector_id, config)
+
+        # Disconnect client if connected (but keep config)
+        if connector_id in self.clients:
+            client = self.clients[connector_id]
+            await client.disconnect()
+            del self.clients[connector_id]
+            logger.info(f"Disabled connector: {config.name} (id={connector_id})")
 
     async def __aenter__(self):
         """Async context manager entry"""

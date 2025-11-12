@@ -7,6 +7,8 @@ This module defines the data structures used for MCP protocol communication.
 from dataclasses import dataclass, field
 from typing import Any, Literal, Optional
 from enum import Enum
+from datetime import datetime
+import uuid
 
 
 class MCPTransportType(Enum):
@@ -50,6 +52,12 @@ class MCPServerConfig:
     headers: dict[str, str] = field(default_factory=dict)
     enabled: bool = True
     timeout: int = 30  # Timeout in seconds for operations
+
+    # New fields for connector management (Phase 3)
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    updated_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    source: str = "api"  # "yaml" or "api" to track origin
 
     def __post_init__(self):
         """Validate configuration"""

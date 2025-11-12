@@ -77,7 +77,12 @@ class PythonRuntime:
         self.reset()
 
     def reset(self):
-        """Reset the runtime namespace."""
+        """
+        Reset the runtime namespace.
+
+        This reinitializes all helpers and re-injects MCP tools from the adapter.
+        Call this after connector changes (add/remove/update) to refresh available tools.
+        """
         # Results collected via result() calls
         self._results = []
 

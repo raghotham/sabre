@@ -87,10 +87,15 @@ class MCPClient:
     async def _connect_stdio(self) -> None:
         """Connect via stdio transport (subprocess)"""
         try:
+            import os
+
             # Build command and arguments
             cmd = [self.config.command] + self.config.args
 
             logger.debug(f"Starting MCP server process: {' '.join(cmd)}")
+
+            # Merge config env with current environment (config env overrides)
+            process_env = {**os.environ, **self.config.env}
 
             # Spawn subprocess with stdio pipes
             self.process = await asyncio.create_subprocess_exec(
@@ -98,7 +103,7 @@ class MCPClient:
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                env={**self.config.env},  # Merge with current env
+                env=process_env,
             )
 
             # Wait a bit for process to start
