@@ -55,13 +55,14 @@ class SessionManager:
         self.mcp_adapter = None
         self._init_mcp()
 
+        # Conversation logger
+        self.conversation_logger = ConversationLogger()
+
         # Create orchestrator with executor and runtime
         # ResponseExecutor reads OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL from env
         executor = ResponseExecutor()
         runtime = PythonRuntime(mcp_adapter=self.mcp_adapter)
-        self.orchestrator = Orchestrator(executor, runtime)
-        # Conversation logger
-        self.conversation_logger = ConversationLogger()
+        self.orchestrator = Orchestrator(executor, runtime, conversation_logger=self.conversation_logger)
 
     def _init_mcp(self):
         """Initialize MCP config loader (actual connection happens in async context)."""
@@ -860,6 +861,23 @@ async def get_conversation(conversation_id: str):
     """Get a specific conversation's events."""
     events = manager.conversation_logger.get_conversation(conversation_id)
     return {"conversation_id": conversation_id, "events": events}
+
+
+@app.get("/v1/conversations/{conversation_id}/turns")
+async def get_conversation_turns(conversation_id: str):
+    """Get conversation messages from logged conversation file."""
+    try:
+        # Read messages from conversation logger
+        messages = manager.conversation_logger.get_conversation(conversation_id)
+
+        return {
+            "conversation_id": conversation_id,
+            "messages": messages,
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching conversation messages: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch conversation: {str(e)}")
 
 
 if __name__ == "__main__":
