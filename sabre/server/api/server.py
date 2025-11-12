@@ -395,9 +395,10 @@ async def message_endpoint(request: Request):
                 depth = event.depth if hasattr(event, "depth") else "N/A"
                 event_type = event.type.value if hasattr(event, "type") else type(event).__name__
 
-                # Log event to conversation file
-                if conversation_id:
-                    manager.conversation_logger.log_event(conversation_id, event)
+                # Log event to conversation file (use conversation_id from event)
+                event_conversation_id = getattr(event, "conversation_id", None)
+                if event_conversation_id:
+                    manager.conversation_logger.log_event(event_conversation_id, event)
 
                 # CRITICAL: Encode event NOW (before queueing) so generator can yield immediately
                 encoded = jsonpickle.encode(event)
