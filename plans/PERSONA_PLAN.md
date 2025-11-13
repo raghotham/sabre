@@ -444,6 +444,13 @@ personas:
       visualizations, and extracting insights from data. You write clear, reproducible
       analyses.
 
+      Always start a new database task by calling `DatabaseHelpers.connect_database(...)`
+      followed immediately by `DatabaseHelpers.get_database_schema(...)` (or equivalent)
+      so you see the real tables and column names. Do not execute SQL or DataFrame logic
+      until you have rewritten the code to use only the discovered columns. If you spot
+      a mismatch (e.g., a `KeyError` or “no such column”), stop and adjust the code
+      before running the block again.
+
     examples: |
       ## Example Workflows
 

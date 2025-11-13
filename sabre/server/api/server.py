@@ -221,6 +221,8 @@ async def message_endpoint(request: Request):
     data = await request.json()
     user_message = data.get("content", "")
     conversation_id = data.get("conversation_id")
+    if isinstance(conversation_id, str) and not conversation_id.strip():
+        conversation_id = None
 
     logger.info(f"Received message request: conversation_id={conversation_id}, message={user_message[:50]}...")
 

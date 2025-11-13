@@ -220,8 +220,11 @@ class Client:
                         ErrorEvent,
                     )
 
-                    # Extract conversation_id
-                    self.conversation_id = event.conversation_id
+                    # Extract conversation_id (normalize empty strings to None)
+                    conversation_id = getattr(event, "conversation_id", None)
+                    if isinstance(conversation_id, str) and not conversation_id.strip():
+                        conversation_id = None
+                    self.conversation_id = conversation_id
 
                     # Log event with timestamp and details
                     import datetime
