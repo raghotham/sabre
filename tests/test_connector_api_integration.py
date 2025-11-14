@@ -2,24 +2,36 @@
 Integration tests for Connector API endpoints.
 
 Tests full CRUD operations via HTTP API.
+
+NOTE: These tests require OPENAI_API_KEY to be set.
+Run with: OPENAI_API_KEY=sk-your-key uv run pytest tests/test_connector_api_integration.py
 """
 
 import pytest
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
-# Set dummy OpenAI key for testing
-os.environ['OPENAI_API_KEY'] = 'test-key-for-integration-tests'
-
 from fastapi.testclient import TestClient
-from sabre.server.api.server import app
+
+
+@pytest.fixture(scope="module", autouse=True)
+def require_api_key(check_api_key):
+    """Require API key for all tests in this module."""
+    pass
 
 
 @pytest.fixture
-def client():
+def app():
+    """Import and return the FastAPI app (after API key is validated)."""
+    from sabre.server.api.server import app
+    return app
+
+
+@pytest.fixture
+def client(app):
     """Create FastAPI test client with initialized session manager."""
-    from sabre.server.api.server import manager
     from sabre.server.mcp.client_manager import MCPClientManager
+    from sabre.server.api.server import manager
 
     # Initialize mcp_manager if not already done
     if manager.mcp_manager is None:
