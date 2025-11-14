@@ -169,7 +169,7 @@ class ResponseExecutor:
             for img in image_attachments:
                 if isinstance(img, ImageContent):
                     if img.is_file_reference:
-                        message_content.append({"type": "input_file", "file_id": img.file_id})
+                        message_content.append({"type": "input_image", "file_id": img.file_id})
                         file_refs += 1
                     else:
                         message_content.append(
