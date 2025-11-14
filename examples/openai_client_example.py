@@ -5,7 +5,7 @@ This demonstrates how to use the OpenAI-compatible wrapper to interact with SABR
 """
 
 import asyncio
-from sabre.openai_client import OpenAI
+from sabre.openai_client import OpenAI, AsyncOpenAI
 
 
 def basic_example():
@@ -30,13 +30,14 @@ async def streaming_example():
     """Streaming example."""
     print("\n\n=== Streaming Example ===\n")
 
-    client = OpenAI(base_url="http://localhost:8011")
+    # Use AsyncOpenAI for async operations
+    client = AsyncOpenAI(base_url="http://localhost:8011")
 
     # Reset conversation for fresh start
     client.reset_conversation()
 
     # Stream response chunks
-    stream = await client.chat.completions.create_async(
+    stream = await client.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "user", "content": "Count to 5"}],
         stream=True,
@@ -55,19 +56,20 @@ async def conversation_example():
     """Multi-turn conversation example."""
     print("\n\n=== Conversation Example ===\n")
 
-    client = OpenAI(base_url="http://localhost:8011")
+    # Use AsyncOpenAI for async operations
+    client = AsyncOpenAI(base_url="http://localhost:8011")
 
     # Reset conversation
     client.reset_conversation()
 
     # First message
-    response1 = await client.chat.completions.create_async(
+    response1 = await client.chat.completions.create(
         messages=[{"role": "user", "content": "My name is Alice"}],
     )
     print(f"Assistant: {response1.choices[0].message.content}")
 
     # Second message (same conversation)
-    response2 = await client.chat.completions.create_async(
+    response2 = await client.chat.completions.create(
         messages=[{"role": "user", "content": "What's my name?"}],
     )
     print(f"Assistant: {response2.choices[0].message.content}")

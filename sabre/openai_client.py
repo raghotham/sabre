@@ -80,10 +80,15 @@ class ChatCompletionChunk:
         self.object = "chat.completion.chunk"
 
 
-class ChatCompletions:
-    """Chat completions endpoint."""
+# ============================================================================
+# Base classes for shared functionality
+# ============================================================================
 
-    def __init__(self, client: "OpenAI"):
+
+class BaseCompletions:
+    """Base class for chat completions with shared functionality."""
+
+    def __init__(self, client):
         self._client = client
 
     async def _parse_sse_line(self, line: str) -> Optional[Any]:
@@ -110,47 +115,8 @@ class ChatCompletions:
             logger.warning(f"Failed to decode event: {e}")
             return None
 
-    def create(
-        self,
-        model: Optional[str] = None,
-        messages: Optional[List[dict]] = None,
-        stream: bool = False,
-        **kwargs,
-    ) -> Union[ChatCompletion, Iterator[ChatCompletionChunk]]:
-        """
-        Create chat completion (synchronous).
-
-        Args:
-            model: Model name (ignored - SABRE uses server's configured model)
-            messages: List of message dicts with 'role' and 'content'
-            stream: Whether to stream responses
-            **kwargs: Additional arguments (ignored)
-
-        Returns:
-            ChatCompletion or Iterator[ChatCompletionChunk]
-        """
-        # Run async version synchronously
-        return asyncio.run(self.create_async(model=model, messages=messages, stream=stream, **kwargs))
-
-    async def create_async(
-        self,
-        model: Optional[str] = None,
-        messages: Optional[List[dict]] = None,
-        stream: bool = False,
-        **kwargs,
-    ) -> Union[ChatCompletion, AsyncIterator[ChatCompletionChunk]]:
-        """
-        Create chat completion (asynchronous).
-
-        Args:
-            model: Model name (ignored - SABRE uses server's configured model)
-            messages: List of message dicts with 'role' and 'content'
-            stream: Whether to stream responses
-            **kwargs: Additional arguments (ignored)
-
-        Returns:
-            ChatCompletion or AsyncIterator[ChatCompletionChunk]
-        """
+    def _validate_messages(self, messages: Optional[List[dict]]) -> str:
+        """Validate messages and extract user input."""
         if not messages:
             raise ValueError("messages parameter is required")
 
@@ -160,12 +126,7 @@ class ChatCompletions:
         if not user_messages:
             raise ValueError("At least one user message is required")
 
-        user_input = "\n".join(msg.get("content", "") for msg in user_messages)
-
-        if stream:
-            return self._stream_response(user_input, model)
-        else:
-            return await self._complete_response(user_input, model)
+        return "\n".join(msg.get("content", "") for msg in user_messages)
 
     async def _complete_response(self, user_input: str, model: Optional[str]) -> ChatCompletion:
         """Get complete response (non-streaming)."""
@@ -303,8 +264,78 @@ class ChatCompletions:
                         break
 
 
+# ============================================================================
+# Synchronous API
+# ============================================================================
+
+
+class ChatCompletions(BaseCompletions):
+    """Synchronous chat completions endpoint."""
+
+    def __init__(self, client: "OpenAI"):
+        super().__init__(client)
+
+    def create(
+        self,
+        model: Optional[str] = None,
+        messages: Optional[List[dict]] = None,
+        stream: bool = False,
+        **kwargs,
+    ) -> Union[ChatCompletion, Iterator[ChatCompletionChunk]]:
+        """
+        Create chat completion (synchronous).
+
+        Args:
+            model: Model name (ignored - SABRE uses server's configured model)
+            messages: List of message dicts with 'role' and 'content'
+            stream: Whether to stream responses
+            **kwargs: Additional arguments (ignored)
+
+        Returns:
+            ChatCompletion or Iterator[ChatCompletionChunk]
+        """
+        user_input = self._validate_messages(messages)
+
+        if stream:
+            # Return sync iterator that wraps async generator
+            async def _async_stream():
+                async for chunk in self._stream_response(user_input, model):
+                    yield chunk
+
+            # Convert async generator to sync iterator
+            loop = asyncio.new_event_loop()
+            queue = asyncio.Queue()
+
+            async def _producer():
+                try:
+                    async for chunk in self._stream_response(user_input, model):
+                        await queue.put(chunk)
+                finally:
+                    await queue.put(None)  # Sentinel
+
+            def _consumer():
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(_producer())
+
+            import threading
+
+            thread = threading.Thread(target=_consumer, daemon=True)
+            thread.start()
+
+            def _sync_iterator():
+                while True:
+                    chunk = asyncio.run_coroutine_threadsafe(queue.get(), loop).result()
+                    if chunk is None:
+                        break
+                    yield chunk
+
+            return _sync_iterator()
+        else:
+            return asyncio.run(self._complete_response(user_input, model))
+
+
 class Chat:
-    """Chat API wrapper."""
+    """Synchronous chat API wrapper."""
 
     def __init__(self, client: "OpenAI"):
         self.completions = ChatCompletions(client)
@@ -312,7 +343,7 @@ class Chat:
 
 class OpenAI:
     """
-    OpenAI-compatible client for SABRE.
+    OpenAI-compatible synchronous client for SABRE.
 
     Usage:
         client = OpenAI(base_url="http://localhost:8011")
@@ -330,7 +361,7 @@ class OpenAI:
         **kwargs,
     ):
         """
-        Initialize SABRE client.
+        Initialize SABRE synchronous client.
 
         Args:
             api_key: Ignored (for compatibility with OpenAI SDK)
@@ -340,6 +371,88 @@ class OpenAI:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.chat = Chat(self)
+        self._conversation_id: Optional[str] = None
+
+    def reset_conversation(self):
+        """Reset conversation ID to start a new conversation."""
+        self._conversation_id = None
+
+
+# ============================================================================
+# Asynchronous API
+# ============================================================================
+
+
+class AsyncChatCompletions(BaseCompletions):
+    """Asynchronous chat completions endpoint."""
+
+    def __init__(self, client: "AsyncOpenAI"):
+        super().__init__(client)
+
+    async def create(
+        self,
+        model: Optional[str] = None,
+        messages: Optional[List[dict]] = None,
+        stream: bool = False,
+        **kwargs,
+    ) -> Union[ChatCompletion, AsyncIterator[ChatCompletionChunk]]:
+        """
+        Create chat completion (asynchronous).
+
+        Args:
+            model: Model name (ignored - SABRE uses server's configured model)
+            messages: List of message dicts with 'role' and 'content'
+            stream: Whether to stream responses
+            **kwargs: Additional arguments (ignored)
+
+        Returns:
+            ChatCompletion or AsyncIterator[ChatCompletionChunk]
+        """
+        user_input = self._validate_messages(messages)
+
+        if stream:
+            return self._stream_response(user_input, model)
+        else:
+            return await self._complete_response(user_input, model)
+
+
+class AsyncChat:
+    """Asynchronous chat API wrapper."""
+
+    def __init__(self, client: "AsyncOpenAI"):
+        self.completions = AsyncChatCompletions(client)
+
+
+class AsyncOpenAI:
+    """
+    OpenAI-compatible asynchronous client for SABRE.
+
+    Usage:
+        client = AsyncOpenAI(base_url="http://localhost:8011")
+        response = await client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": "Hello"}]
+        )
+        print(response.choices[0].message.content)
+    """
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        base_url: str = "http://localhost:8011",
+        **kwargs,
+    ):
+        """
+        Initialize SABRE asynchronous client.
+
+        Args:
+            api_key: Ignored (for compatibility with OpenAI SDK)
+            base_url: SABRE server URL
+            **kwargs: Additional arguments (ignored)
+        """
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        self.chat = AsyncChat(self)
         self._conversation_id: Optional[str] = None
 
     def reset_conversation(self):
