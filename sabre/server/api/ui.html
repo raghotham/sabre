@@ -6,100 +6,114 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             margin: 0;
-            padding: 20px;
+            padding: 0;
             background: #1e1e1e;
             color: #d4d4d4;
+            height: 100vh;
+            overflow: hidden;
         }
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
+        .header {
+            background: #252526;
+            padding: 15px 20px;
+            border-bottom: 1px solid #3e3e42;
         }
         h1 {
             color: #4ec9b0;
-            margin-bottom: 20px;
+            margin: 0;
+            font-size: 24px;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            height: calc(100vh - 56px);
+            gap: 0;
+        }
+        .sidebar {
+            background: #252526;
+            border-right: 1px solid #3e3e42;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        .sidebar-header {
+            padding: 15px 20px;
+            border-bottom: 1px solid #3e3e42;
+            font-weight: 600;
+            color: #cccccc;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         .conversations-list {
-            background: #252526;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
         }
         .conversation-item {
-            padding: 15px;
-            margin-bottom: 10px;
+            padding: 12px 15px;
+            margin-bottom: 5px;
             background: #2d2d30;
             border-radius: 4px;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
         }
         .conversation-item:hover {
             background: #37373d;
         }
+        .conversation-item.selected {
+            background: #37373d;
+            border-left-color: #4ec9b0;
+        }
         .conversation-id {
             font-family: 'Monaco', 'Menlo', monospace;
             color: #4ec9b0;
-            font-size: 14px;
+            font-size: 12px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         .conversation-meta {
             color: #858585;
-            font-size: 12px;
+            font-size: 11px;
             margin-top: 5px;
         }
-        .events-panel {
-            background: #252526;
-            border-radius: 8px;
-            padding: 20px;
-            display: none;
-        }
-        .events-panel.active {
-            display: block;
-        }
-        .event {
-            padding: 10px;
-            margin-bottom: 10px;
-            background: #2d2d30;
-            border-radius: 4px;
-            border-left: 3px solid #4ec9b0;
-        }
-        .event-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-        }
-        .event-type {
-            font-weight: bold;
-            color: #4ec9b0;
-        }
-        .event-timestamp {
-            color: #858585;
+        .conversation-preview {
+            color: #b0b0b0;
             font-size: 12px;
+            margin-top: 5px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
-        .event-data {
-            font-family: 'Monaco', 'Menlo', monospace;
-            font-size: 12px;
+        .main-panel {
             background: #1e1e1e;
-            padding: 10px;
-            border-radius: 4px;
-            overflow-x: auto;
-            max-height: 300px;
             overflow-y: auto;
+            display: flex;
+            flex-direction: column;
         }
-        .event-text {
-            color: #ce9178;
-            white-space: pre-wrap;
+        .conversation-header {
+            background: #252526;
+            padding: 15px 20px;
+            border-bottom: 1px solid #3e3e42;
+            position: sticky;
+            top: 0;
+            z-index: 10;
         }
-        .event-code {
-            color: #9cdcfe;
-            white-space: pre-wrap;
+        .conversation-title {
+            font-family: 'Monaco', 'Menlo', monospace;
+            color: #4ec9b0;
+            font-size: 14px;
+            margin: 0;
         }
-        .event-result {
-            color: #b5cea8;
-            white-space: pre-wrap;
+        .conversation-content {
+            flex: 1;
+            padding: 20px;
         }
         .turn {
             margin-bottom: 20px;
             padding: 15px;
-            background: #2d2d30;
+            background: #252526;
             border-radius: 4px;
         }
         .turn.user {
@@ -123,42 +137,58 @@
             white-space: pre-wrap;
             line-height: 1.6;
         }
-        .back-button {
-            background: #0e639c;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            cursor: pointer;
-            margin-bottom: 15px;
-        }
-        .back-button:hover {
-            background: #1177bb;
+        .empty-state {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #858585;
+            font-size: 14px;
         }
         .loading {
             text-align: center;
             padding: 40px;
             color: #858585;
         }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 10px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e1e1e;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #424242;
+            border-radius: 5px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4e4e4e;
+        }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="header">
         <h1>SABRE Conversations</h1>
-
-        <div id="conversationsList" class="conversations-list">
-            <div class="loading">Loading conversations...</div>
+    </div>
+    <div class="container">
+        <div class="sidebar">
+            <div class="sidebar-header">Conversations</div>
+            <div id="conversationsList" class="conversations-list">
+                <div class="loading">Loading conversations...</div>
+            </div>
         </div>
 
-        <div id="eventsPanel" class="events-panel">
-            <button class="back-button" onclick="showConversations()">← Back to Conversations</button>
-            <h2 id="conversationTitle"></h2>
-            <div id="eventsList"></div>
+        <div class="main-panel">
+            <div id="mainContent">
+                <div class="empty-state">Select a conversation to view details</div>
+            </div>
         </div>
     </div>
 
     <script>
         let conversations = [];
+        let selectedConversationId = null;
 
         async function loadConversations() {
             try {
@@ -179,15 +209,18 @@
                 return;
             }
 
-            list.innerHTML = conversations.map(conv => `
-                <div class="conversation-item" onclick="viewConversation('${conv.conversation_id}')">
-                    <div class="conversation-id">${conv.conversation_id}</div>
-                    ${conv.preview ? `<div class="conversation-meta" style="color: #b0b0b0; margin: 5px 0;">${escapeHtml(conv.preview)}</div>` : ''}
-                    <div class="conversation-meta">
-                        ${conv.event_count} events • Started: ${new Date(conv.start_time).toLocaleString()}
+            list.innerHTML = conversations.map(conv => {
+                const isSelected = conv.conversation_id === selectedConversationId;
+                return `
+                    <div class="conversation-item ${isSelected ? 'selected' : ''}" onclick="viewConversation('${conv.conversation_id}')">
+                        <div class="conversation-id">${conv.conversation_id}</div>
+                        ${conv.preview ? `<div class="conversation-preview">${escapeHtml(conv.preview)}</div>` : ''}
+                        <div class="conversation-meta">
+                            ${conv.event_count} events • Started: ${new Date(conv.start_time).toLocaleString()}
+                        </div>
                     </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
         }
 
         function escapeHtml(text) {
@@ -197,6 +230,10 @@
         }
 
         async function viewConversation(conversationId, pushState = true) {
+            // Update selected conversation
+            selectedConversationId = conversationId;
+            renderConversations(); // Re-render to show selected state
+
             // Update URL
             if (pushState) {
                 history.pushState(
@@ -206,32 +243,51 @@
                 );
             }
 
-            document.getElementById('conversationsList').style.display = 'none';
-            document.getElementById('eventsPanel').classList.add('active');
-            document.getElementById('conversationTitle').textContent = conversationId;
-            document.getElementById('eventsList').innerHTML = '<div class="loading">Loading conversation...</div>';
+            // Show loading in main panel
+            const mainContent = document.getElementById('mainContent');
+            mainContent.innerHTML = `
+                <div class="conversation-header">
+                    <h2 class="conversation-title">${conversationId}</h2>
+                </div>
+                <div class="conversation-content">
+                    <div class="loading">Loading conversation...</div>
+                </div>
+            `;
 
             try {
                 // Fetch conversation messages from logged files
                 const response = await fetch(`/v1/conversations/${conversationId}/turns`);
                 const data = await response.json();
-                renderMessages(data.messages);
+                renderMessages(data.messages, conversationId);
             } catch (error) {
                 console.error('Error loading conversation:', error);
-                document.getElementById('eventsList').innerHTML =
-                    '<div class="loading">Error loading conversation</div>';
+                mainContent.innerHTML = `
+                    <div class="conversation-header">
+                        <h2 class="conversation-title">${conversationId}</h2>
+                    </div>
+                    <div class="conversation-content">
+                        <div class="loading">Error loading conversation</div>
+                    </div>
+                `;
             }
         }
 
-        function renderMessages(messages) {
-            const list = document.getElementById('eventsList');
+        function renderMessages(messages, conversationId) {
+            const mainContent = document.getElementById('mainContent');
 
             if (!messages || messages.length === 0) {
-                list.innerHTML = '<div class="loading">No messages in this conversation</div>';
+                mainContent.innerHTML = `
+                    <div class="conversation-header">
+                        <h2 class="conversation-title">${conversationId}</h2>
+                    </div>
+                    <div class="conversation-content">
+                        <div class="loading">No messages in this conversation</div>
+                    </div>
+                `;
                 return;
             }
 
-            list.innerHTML = messages.map(msg => {
+            const messagesHtml = messages.map(msg => {
                 let content = msg.content;
 
                 // Extract and render images from markdown image syntax: ![alt](url)
@@ -278,46 +334,26 @@
                 html += '</div>';
                 return html;
             }).join('');
+
+            mainContent.innerHTML = `
+                <div class="conversation-header">
+                    <h2 class="conversation-title">${conversationId}</h2>
+                </div>
+                <div class="conversation-content">
+                    ${messagesHtml}
+                </div>
+            `;
         }
 
-        function renderEvents(events) {
-            const list = document.getElementById('eventsList');
-            list.innerHTML = events.map(event => {
-                let dataHtml = '';
-
-                // Special rendering for specific event types
-                if (event.data.text) {
-                    const textPreview = event.data.text.substring(0, 500);
-                    dataHtml = `<div class="event-text">${escapeHtml(textPreview)}${event.data.text.length > 500 ? '...' : ''}</div>`;
-                } else if (event.data.code) {
-                    dataHtml = `<div class="event-code">${escapeHtml(event.data.code)}</div>`;
-                } else if (event.data.result) {
-                    const resultStr = String(event.data.result).substring(0, 300);
-                    dataHtml = `<div class="event-result">${escapeHtml(resultStr)}${String(event.data.result).length > 300 ? '...' : ''}</div>`;
-                } else if (Object.keys(event.data).length > 0) {
-                    dataHtml = `<div class="event-data">${JSON.stringify(event.data, null, 2)}</div>`;
-                }
-
-                return `
-                    <div class="event">
-                        <div class="event-header">
-                            <span class="event-type">${event.event_type}</span>
-                            <span class="event-timestamp">${new Date(event.timestamp).toLocaleString()}</span>
-                        </div>
-                        ${dataHtml}
-                    </div>
-                `;
-            }).join('');
-        }
-
-        function showConversations(pushState = true) {
+        function clearSelection(pushState = true) {
             // Update URL to remove conversation parameter
             if (pushState) {
                 history.pushState({}, '', '/');
             }
 
-            document.getElementById('eventsPanel').classList.remove('active');
-            document.getElementById('conversationsList').style.display = 'block';
+            selectedConversationId = null;
+            renderConversations();
+            document.getElementById('mainContent').innerHTML = '<div class="empty-state">Select a conversation to view details</div>';
         }
 
         // Handle browser back/forward buttons
@@ -328,7 +364,7 @@
             if (conversationId) {
                 viewConversation(conversationId, false);
             } else {
-                showConversations(false);
+                clearSelection(false);
             }
         });
 
@@ -348,8 +384,10 @@
         // Initialize app
         initializeApp();
 
-        // Auto-refresh conversations list every 10 seconds
-        setInterval(loadConversations, 10000);
+        // Auto-refresh conversations list every 10 seconds (preserves selection)
+        setInterval(() => {
+            loadConversations();
+        }, 10000);
     </script>
 </body>
 </html>
