@@ -246,6 +246,11 @@ def get_files_dir(conversation_id: str = None) -> Path:
     return SabrePaths.get_files_dir(conversation_id)
 
 
+def get_data_dir() -> Path:
+    """Get data directory (XDG_DATA_HOME/sabre)."""
+    return SabrePaths.get_data_home()
+
+
 def get_pid_file() -> Path:
     """Get PID file path."""
     return SabrePaths.get_pid_file()
