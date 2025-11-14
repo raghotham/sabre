@@ -421,6 +421,7 @@ class Orchestrator:
         logger.info(f"Response text: {full_text[:500]}{'...' if len(full_text) > 500 else ''}")
 
         # Log assistant response to conversation file
+        # (image URLs are embedded in the response text)
         if self.conversation_logger and conversation_id:
             self.conversation_logger.log_message(conversation_id, "assistant", full_text)
 

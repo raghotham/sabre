@@ -26,7 +26,7 @@ class ConversationLogger:
         Args:
             conversation_id: Conversation ID
             role: Message role ('user' or 'assistant')
-            content: Message content text
+            content: Message content text (may include image URLs)
         """
         if not conversation_id:
             return
