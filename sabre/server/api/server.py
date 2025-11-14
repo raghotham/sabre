@@ -27,9 +27,10 @@ from sabre.common import (
     CancelledEvent,
     ErrorEvent,
 )
-from sabre.common.paths import get_logs_dir, get_files_dir, ensure_dirs
+from sabre.common.paths import get_logs_dir, get_files_dir, ensure_dirs, SabrePaths
 from sabre.server.orchestrator import Orchestrator
 from sabre.server.python_runtime import PythonRuntime
+from sabre.server.api.connector_store import ConnectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +43,122 @@ class SessionManager:
         self.sessions: dict[str, dict] = {}
         # Track running tasks for cancellation (by request_id)
         self.running_tasks: dict[str, asyncio.Task] = {}
+
+        # Initialize connector store for persistence
+        connector_store_path = SabrePaths.get_state_home() / "connectors.json"
+        self.connector_store = ConnectorStore(connector_store_path)
+
+        # Initialize MCP integration
+        self.mcp_manager = None
+        self.mcp_adapter = None
+        self._init_mcp()
+
         # Create orchestrator with executor and runtime
         # ResponseExecutor reads OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL from env
         executor = ResponseExecutor()
-        runtime = PythonRuntime()
+        runtime = PythonRuntime(mcp_adapter=self.mcp_adapter)
         self.orchestrator = Orchestrator(executor, runtime)
+
+    def _init_mcp(self):
+        """Initialize MCP config loader (actual connection happens in async context)."""
+        try:
+            from sabre.server.mcp import MCPConfigLoader
+
+            # Load MCP configurations
+            self.mcp_configs = MCPConfigLoader.load()
+
+            if not self.mcp_configs:
+                logger.info("No MCP servers configured")
+                return
+
+            logger.info(f"Loaded {len(self.mcp_configs)} MCP server configurations")
+
+        except ImportError:
+            logger.debug("MCP integration not available (PyYAML not installed)")
+            self.mcp_configs = []
+        except Exception as e:
+            logger.warning(f"Failed to load MCP configurations: {e}")
+            logger.debug("Continuing without MCP integration")
+            self.mcp_configs = []
+
+    async def connect_mcp_servers(self):
+        """Connect to MCP servers (must be called in async context)."""
+        try:
+            from sabre.server.mcp import MCPClientManager, MCPHelperAdapter
+
+            # Create client manager with connector store for persistence
+            self.mcp_manager = MCPClientManager(connector_store=self.connector_store)
+
+            # Load persisted connectors from ConnectorStore
+            persisted_configs = self.connector_store.load_all()
+            logger.info(f"Loaded {len(persisted_configs)} persisted connectors")
+
+            # Merge bootstrap configs from YAML
+            all_configs = {}
+
+            # Add bootstrap configs (from YAML) - mark as yaml source
+            if hasattr(self, 'mcp_configs'):
+                for config in self.mcp_configs:
+                    config.source = "yaml"
+                    all_configs[config.id] = config
+
+            # Override with persisted configs (from API) - already have correct source
+            for connector_id, config in persisted_configs.items():
+                all_configs[connector_id] = config
+
+            logger.info(f"Total connectors to connect: {len(all_configs)} ({len(self.mcp_configs) if hasattr(self, 'mcp_configs') else 0} from YAML, {len(persisted_configs)} persisted)")
+
+            # Register all connectors (both enabled and disabled)
+            # Don't auto-connect on bootstrap to avoid startup errors
+            for config in all_configs.values():
+                # Temporarily mark as disabled for registration
+                original_enabled = config.enabled
+                config.enabled = False
+
+                try:
+                    # Register the connector (stores config, doesn't connect)
+                    await self.mcp_manager.connect(config)
+
+                    # Restore original enabled state
+                    config.enabled = original_enabled
+                    self.mcp_manager.configs[config.id].enabled = original_enabled
+
+                    # If it was enabled, try to connect now
+                    if original_enabled:
+                        try:
+                            # Enable will trigger connection
+                            await self.mcp_manager.enable_connector(config.id)
+                        except Exception as e:
+                            logger.warning(f"Failed to connect to {config.name} on startup (will retry on demand): {e}")
+                            # Keep connector registered but disabled
+
+                except Exception as e:
+                    logger.error(f"Failed to register connector {config.name}: {e}")
+                    # Continue with other connectors
+
+            # Create helper adapter and refresh tools (pass event loop for thread-safe execution)
+            self.mcp_adapter = MCPHelperAdapter(self.mcp_manager, event_loop=asyncio.get_running_loop())
+            await self.mcp_adapter.refresh_tools()
+
+            logger.info(f"MCP integration initialized with {self.mcp_adapter.get_tool_count()} tools from {len(self.mcp_manager.list_servers())} servers")
+
+            # Update runtime with MCP adapter
+            if self.orchestrator and self.orchestrator.runtime:
+                self.orchestrator.runtime.mcp_adapter = self.mcp_adapter
+                self.orchestrator.runtime.reset()  # Refresh namespace with MCP tools
+
+        except Exception as e:
+            logger.error(f"Failed to connect to MCP servers: {e}")
+            logger.debug("Continuing without MCP integration")
+
+    async def disconnect_mcp_servers(self):
+        """Disconnect from MCP servers."""
+        if self.mcp_manager:
+            try:
+                await self.mcp_manager.disconnect_all()
+                logger.info("Disconnected from MCP servers")
+            except Exception as e:
+                logger.error(f"Error disconnecting from MCP servers: {e}")
 
     def get_or_create_session(self, conversation_id: str | None) -> dict:
         """Get existing session or create new one."""
@@ -144,8 +256,18 @@ async def lifespan(app: FastAPI):
         logger.error(f"Playwright check failed: {e}")
         raise
 
+    # Connect to MCP servers
+    try:
+        await manager.connect_mcp_servers()
+    except Exception as e:
+        logger.warning(f"MCP initialization failed: {e}")
+        logger.info("Server starting without MCP integration")
+
     yield
+
+    # Disconnect from MCP servers on shutdown
     logger.info("Shutting down sabre server...")
+    await manager.disconnect_mcp_servers()
 
 
 # Create FastAPI app
@@ -447,6 +569,263 @@ async def clear_conversation(request: Request):
         return {"status": "cleared", "conversation_id": conversation_id}
     else:
         return {"status": "error", "message": "No conversation_id provided"}
+
+
+# ============================================================================
+# V1 API - Connector Management (MCP Connectors CRUD)
+# ============================================================================
+
+from sabre.server.api.models import (
+    ConnectorCreateRequest,
+    ConnectorUpdateRequest,
+    ConnectorResponse,
+    ConnectorDetailResponse,
+    ToolResponse,
+    ConnectorToolsResponse,
+)
+from sabre.server.mcp.models import MCPServerConfig, MCPTransportType
+
+
+@app.post("/v1/connectors", response_model=ConnectorResponse)
+async def create_connector(request: ConnectorCreateRequest):
+    """
+    Create and connect to a new MCP server.
+
+    The connector will be persisted and automatically reconnected on server restart.
+    """
+    try:
+        # Convert request to MCPServerConfig
+        config = MCPServerConfig(
+            name=request.name,
+            type=MCPTransportType(request.type),
+            command=request.command,
+            args=request.args,
+            env=request.env,
+            url=request.url,
+            headers=request.headers,
+            enabled=request.enabled,
+            timeout=request.timeout,
+            source="api",  # Mark as API-created
+        )
+
+        # Connect to server
+        connector_id = await manager.mcp_manager.connect(config)
+
+        # Refresh runtime tools
+        if manager.orchestrator and manager.orchestrator.runtime:
+            manager.orchestrator.runtime.mcp_adapter = manager.mcp_adapter
+            manager.orchestrator.runtime.reset()
+
+        # Get connector info for response
+        info = manager.mcp_manager.get_connector_info(connector_id)
+
+        return ConnectorResponse(**info)
+
+    except Exception as e:
+        logger.error(f"Failed to create connector: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/v1/connectors", response_model=list[ConnectorResponse])
+async def list_connectors():
+    """
+    List all configured MCP connectors with their status.
+    """
+    try:
+        if not manager.mcp_manager:
+            return []
+
+        connectors_info = manager.mcp_manager.get_all_connector_info()
+        return [ConnectorResponse(**info) for info in connectors_info]
+    except Exception as e:
+        logger.error(f"Failed to list connectors: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/v1/connectors/{connector_id}", response_model=ConnectorDetailResponse)
+async def get_connector(connector_id: str):
+    """
+    Get detailed information about a specific connector.
+    """
+    try:
+        if not manager.mcp_manager:
+            raise HTTPException(status_code=404, detail="MCP manager not initialized")
+
+        info = manager.mcp_manager.get_connector_info(connector_id)
+        config = manager.mcp_manager.configs.get(connector_id)
+
+        if not config:
+            raise HTTPException(status_code=404, detail="Connector not found")
+
+        return ConnectorDetailResponse(
+            **info,
+            command=config.command,
+            args=config.args,
+            url=config.url,
+            timeout=config.timeout,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get connector {connector_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/v1/connectors/{connector_id}/tools", response_model=ConnectorToolsResponse)
+async def get_connector_tools(connector_id: str):
+    """
+    List all tools available from a specific connector.
+    """
+    try:
+        if not manager.mcp_manager:
+            raise HTTPException(status_code=404, detail="MCP manager not initialized")
+
+        # Get connector info
+        info = manager.mcp_manager.get_connector_info(connector_id)
+
+        # Get tools
+        tools = await manager.mcp_manager.get_connector_tools(connector_id)
+
+        # Convert to response format
+        tool_responses = [
+            ToolResponse(
+                name=tool.name,
+                description=tool.description,
+                signature=tool.get_signature(),
+                server_name=info["name"],
+                input_schema=tool.input_schema,
+            )
+            for tool in tools
+        ]
+
+        return ConnectorToolsResponse(
+            connector_id=connector_id,
+            connector_name=info["name"],
+            tools=tool_responses,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get tools for connector {connector_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/v1/connectors/{connector_id}", response_model=ConnectorResponse)
+async def update_connector(connector_id: str, request: ConnectorUpdateRequest):
+    """
+    Update connector configuration and reconnect.
+
+    Only provided fields will be updated (partial update).
+    The connector will be disconnected and reconnected with new config.
+    """
+    try:
+        if not manager.mcp_manager:
+            raise HTTPException(status_code=404, detail="MCP manager not initialized")
+
+        # Build updates dict from request (only non-None fields)
+        updates = {k: v for k, v in request.model_dump().items() if v is not None}
+
+        if not updates:
+            raise HTTPException(status_code=400, detail="No updates provided")
+
+        # Update connector
+        await manager.mcp_manager.update_connector(connector_id, updates)
+
+        # Refresh runtime tools
+        if manager.orchestrator and manager.orchestrator.runtime:
+            manager.orchestrator.runtime.mcp_adapter = manager.mcp_adapter
+            manager.orchestrator.runtime.reset()
+
+        # Get updated info
+        info = manager.mcp_manager.get_connector_info(connector_id)
+        return ConnectorResponse(**info)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update connector {connector_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.patch("/v1/connectors/{connector_id}", response_model=ConnectorResponse)
+async def patch_connector(connector_id: str, request: ConnectorUpdateRequest):
+    """
+    Partial update to connector (e.g., enable/disable without reconnecting).
+
+    Use this for lightweight updates like toggling enabled state.
+    Use PUT for configuration changes that require reconnection.
+    """
+    try:
+        if not manager.mcp_manager:
+            raise HTTPException(status_code=404, detail="MCP manager not initialized")
+
+        # Build updates dict from request (only non-None fields)
+        updates = {k: v for k, v in request.model_dump().items() if v is not None}
+
+        if not updates:
+            raise HTTPException(status_code=400, detail="No updates provided")
+
+        # Special handling for enable/disable
+        if "enabled" in updates and len(updates) == 1:
+            if updates["enabled"]:
+                await manager.mcp_manager.enable_connector(connector_id)
+            else:
+                await manager.mcp_manager.disable_connector(connector_id)
+
+            # Refresh runtime tools
+            if manager.orchestrator and manager.orchestrator.runtime:
+                manager.orchestrator.runtime.mcp_adapter = manager.mcp_adapter
+                manager.orchestrator.runtime.reset()
+        else:
+            # Fall back to full update
+            await manager.mcp_manager.update_connector(connector_id, updates)
+
+        # Get updated info
+        info = manager.mcp_manager.get_connector_info(connector_id)
+        return ConnectorResponse(**info)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to patch connector {connector_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/v1/connectors/{connector_id}")
+async def delete_connector(connector_id: str):
+    """
+    Disconnect and remove a connector.
+
+    The connector will be removed from persistent storage.
+    """
+    try:
+        if not manager.mcp_manager:
+            raise HTTPException(status_code=404, detail="MCP manager not initialized")
+
+        # Get name before deleting
+        info = manager.mcp_manager.get_connector_info(connector_id)
+        connector_name = info["name"]
+
+        # Disconnect and delete
+        await manager.mcp_manager.disconnect(connector_id)
+
+        # Refresh runtime tools
+        if manager.orchestrator and manager.orchestrator.runtime:
+            manager.orchestrator.runtime.mcp_adapter = manager.mcp_adapter
+            manager.orchestrator.runtime.reset()
+
+        return {
+            "status": "deleted",
+            "connector_id": connector_id,
+            "connector_name": connector_name,
+            "message": "Connector disconnected and removed",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete connector {connector_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

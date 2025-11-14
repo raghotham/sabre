@@ -1,0 +1,13 @@
+# MCP Configuration for Testing Remote SSE Server
+#
+# Copy this to ~/.config/sabre/mcp.yaml to test the remote MCP server
+# Or use the setup script to automatically configure it.
+
+mcp_servers:
+  # Remote test server via SSE (HTTP)
+  remote_test:
+    type: sse
+    url: "http://localhost:8080/mcp"
+    headers: {}  # No authentication for local testing
+    enabled: true
+    timeout: 30
