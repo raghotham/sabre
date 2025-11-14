@@ -156,6 +156,49 @@ result(var2)
 </helpers>
 </complete>
 
+Example: Here is an example of creating a matplotlib plot and INCLUDING THE IMAGE URL in your final response:
+
+{{user_colon_token}} Plot the Fibonacci sequence for the first 10 numbers
+
+{{assistant_colon_token}}
+I'll calculate the Fibonacci sequence and create a plot.
+<helpers>
+import matplotlib.pyplot as plt
+
+# Generate Fibonacci sequence
+fib = [0, 1]
+for i in range(8):
+    fib.append(fib[-1] + fib[-2])
+
+# Create plot
+plt.figure(figsize=(10, 6))
+plt.plot(range(len(fib)), fib, marker='o')
+plt.xlabel('n')
+plt.ylabel('Fibonacci(n)')
+plt.title('Fibonacci Sequence')
+plt.grid(True)
+plt.show()
+
+print(f"Fibonacci sequence: {fib}")
+</helpers>
+
+{{user_colon_token}}
+<helpers_result>
+[Generated 1 matplotlib figure(s)]
+[Figure 1: PNG image]
+
+![Figure 1](http://localhost:8011/v1/files/conv_abc123/figure_1_1_1.png)
+Fibonacci sequence: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34]
+</helpers_result>
+
+{{assistant_colon_token}}
+Here is the Fibonacci sequence for the first 10 numbers: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34]
+
+![Figure 1](http://localhost:8011/v1/files/conv_abc123/figure_1_1_1.png)
+
+The plot shows how the Fibonacci numbers grow exponentially as n increases.
+</complete>
+
 Example: Here is an extended example of the same query, showing a conversational style with the User to solve multiple queries/questions. It also demonstrates your ability to use data already in variables after the code execution has been performed:
 
 {{user_colon_token}} who is the current AMD CEO?
