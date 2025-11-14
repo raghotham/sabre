@@ -54,10 +54,16 @@ class PythonRuntime:
     Executes Python code in isolated namespace with helper functions.
     """
 
-    def __init__(self):
-        """Initialize runtime with clean namespace."""
+    def __init__(self, mcp_adapter=None):
+        """
+        Initialize runtime with clean namespace.
+
+        Args:
+            mcp_adapter: Optional MCPHelperAdapter for MCP tool integration
+        """
         self.orchestrator = None  # Set by orchestrator after init
         self.openai_client = None  # Lazy init in _llm_call_async
+        self.mcp_adapter = mcp_adapter  # MCP tool adapter
 
         # Configure matplotlib to use non-interactive backend
         try:
@@ -71,7 +77,12 @@ class PythonRuntime:
         self.reset()
 
     def reset(self):
-        """Reset the runtime namespace."""
+        """
+        Reset the runtime namespace.
+
+        This reinitializes all helpers and re-injects MCP tools from the adapter.
+        Call this after connector changes (add/remove/update) to refresh available tools.
+        """
         # Results collected via result() calls
         self._results = []
 
@@ -146,6 +157,30 @@ class PythonRuntime:
         except ImportError:
             logger.debug("matplotlib not available, skipping")
 
+        # Add MCP tools if adapter is available
+        if self.mcp_adapter:
+            mcp_tools = self.mcp_adapter.get_available_tools()
+
+            # Group tools by server to create namespace objects
+            # e.g., remote_test.echo becomes remote_test object with echo attribute
+            servers = {}
+            for tool_name, tool_func in mcp_tools.items():
+                if "." in tool_name:
+                    server_name, method_name = tool_name.split(".", 1)
+                    if server_name not in servers:
+                        servers[server_name] = type(server_name, (), {})()
+                    setattr(servers[server_name], method_name, tool_func)
+                else:
+                    # Flat tool name (no server prefix)
+                    self.namespace[tool_name] = tool_func
+
+            # Add server objects to namespace
+            for server_name, server_obj in servers.items():
+                self.namespace[server_name] = server_obj
+
+            logger.info(f"Added {len(mcp_tools)} MCP tools to namespace: {list(mcp_tools.keys())}")
+            logger.info(f"Created {len(servers)} MCP server namespaces: {list(servers.keys())}")
+
     def set_orchestrator(self, orchestrator):
         """
         Set orchestrator reference for recursive calls.
@@ -164,7 +199,16 @@ class PythonRuntime:
         Returns:
             Formatted string with function signatures
         """
-        return get_helper_signatures(self.namespace)
+        # Get built-in helper signatures
+        signatures = get_helper_signatures(self.namespace)
+
+        # Add MCP tools documentation if available
+        if self.mcp_adapter:
+            mcp_docs = self.mcp_adapter.generate_documentation()
+            if mcp_docs:
+                signatures += "\n\n" + mcp_docs
+
+        return signatures
 
     def _get_openai_client(self):
         """
