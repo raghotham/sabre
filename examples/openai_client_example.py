@@ -44,8 +44,9 @@ async def streaming_example():
 
     print("Response: ", end="", flush=True)
     async for chunk in stream:
-        if chunk.choices[0].delta.get("content"):
-            content = chunk.choices[0].delta["content"]
+        # chunk.choices[0] is a dict, not an object
+        if chunk.choices[0]["delta"].get("content"):
+            content = chunk.choices[0]["delta"]["content"]
             print(content, end="", flush=True)
     print()
 
