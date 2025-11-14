@@ -547,9 +547,13 @@ class Orchestrator:
                 has_images = len(image_urls) > 0
                 formatted_output, prompt_name_used = self._format_result(result.output, has_images)
 
-                # Output text for LLM (without localhost URLs - those are only for client display)
-                # Images will be referenced via file_id after upload
+                # Output text for LLM - include image URLs so LLM can reference them
                 output_text_for_llm = formatted_output
+                if image_urls:
+                    # Append image URLs as markdown so LLM can reference them in responses
+                    output_text_for_llm += "\n\n"
+                    for idx, url in enumerate(image_urls, 1):
+                        output_text_for_llm += f"![Figure {idx}]({url})\n"
 
                 # If result is very large (>10KB), save to file and reference by file_id
                 MAX_INLINE_CHARS = 10000  # 10KB threshold
@@ -903,7 +907,7 @@ class Orchestrator:
 
         # Generate URL (assumes server on localhost:8011 or PORT)
         port = os.getenv("PORT", "8011")
-        url = f"http://localhost:{port}/files/{conversation_id}/{filename}"
+        url = f"http://localhost:{port}/v1/files/{conversation_id}/{filename}"
         logger.info(f"💾 Saved image to: {file_path}")
         logger.debug(f"   Accessible at: {url}")
 
