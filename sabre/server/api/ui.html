@@ -232,12 +232,51 @@
             }
 
             list.innerHTML = messages.map(msg => {
-                return `
+                let content = msg.content;
+
+                // Extract and render images from markdown image syntax: ![alt](url)
+                // or bare URLs pointing to /v1/files/
+                const imageUrls = [];
+
+                // Match markdown images: ![...](http://...)
+                const markdownImageRegex = /!\[([^\]]*)\]\((http:\/\/[^)]+)\)/g;
+                let match;
+                while ((match = markdownImageRegex.exec(content)) !== null) {
+                    imageUrls.push({ url: match[2], alt: match[1] });
+                }
+
+                // Also match bare URLs that look like file URLs
+                const bareUrlRegex = /(http:\/\/[^\s]+\/v1\/files\/[^\s]+)/g;
+                while ((match = bareUrlRegex.exec(content)) !== null) {
+                    // Only add if not already in imageUrls
+                    if (!imageUrls.find(img => img.url === match[1])) {
+                        imageUrls.push({ url: match[1], alt: '' });
+                    }
+                }
+
+                // Remove image markdown syntax from text content
+                let textContent = content.replace(/!\[([^\]]*)\]\((http:\/\/[^)]+)\)/g, '');
+                // Remove bare file URLs
+                textContent = textContent.replace(/(http:\/\/[^\s]+\/v1\/files\/[^\s]+)/g, '');
+
+                // Build HTML
+                let html = `
                     <div class="turn ${msg.role}">
                         <div class="turn-role">${msg.role}</div>
-                        <div class="turn-content">${escapeHtml(msg.content)}</div>
-                    </div>
+                        <div class="turn-content">${escapeHtml(textContent)}</div>
                 `;
+
+                // Add images
+                if (imageUrls.length > 0) {
+                    html += '<div style="margin-top: 10px;">';
+                    imageUrls.forEach(img => {
+                        html += `<img src="${img.url}" alt="${escapeHtml(img.alt)}" style="max-width: 100%; height: auto; margin: 5px 0; border-radius: 4px;">`;
+                    });
+                    html += '</div>';
+                }
+
+                html += '</div>';
+                return html;
             }).join('');
         }
 
