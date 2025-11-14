@@ -185,11 +185,11 @@ class MCPHelperAdapter:
 
         server_name, tool_name = qualified_name.split(".", 1)
 
-        # Get client for server
-        if not self.client_manager.has_server(server_name):
+        # Get client for server (check if server name exists in name_to_id mapping)
+        if server_name not in self.client_manager.name_to_id:
             raise MCPServerNotFoundError(server_name)
 
-        client = self.client_manager.get_client(server_name)
+        client = self.client_manager.get_client_by_name(server_name)
 
         # Call tool via MCP client
         logger.debug(f"Invoking MCP tool: {qualified_name} with args: {kwargs}")

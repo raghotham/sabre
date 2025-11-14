@@ -72,10 +72,14 @@ async def test_connect_single_server(test_config, mock_client):
     manager = MCPClientManager()
 
     with patch("sabre.server.mcp.client_manager.MCPClient", return_value=mock_client):
-        await manager.connect(test_config)
+        connector_id = await manager.connect(test_config)
 
-        assert "test-server" in manager.clients
-        assert "test-server" in manager.configs
+        # Check UUID-based storage
+        assert connector_id in manager.clients
+        assert connector_id in manager.configs
+        # Check name mappings
+        assert "test-server" in manager.name_to_id
+        assert manager.name_to_id["test-server"] == connector_id
         mock_client.connect.assert_called_once()
         mock_client.list_tools.assert_called_once()
 
@@ -121,8 +125,14 @@ async def test_connect_all_servers(mock_client):
         await manager.connect_all(configs)
 
         assert len(manager.clients) == 2
-        assert "server1" in manager.clients
-        assert "server2" in manager.clients
+        # Check name mappings exist
+        assert "server1" in manager.name_to_id
+        assert "server2" in manager.name_to_id
+        # Verify clients are stored by UUID
+        server1_id = manager.name_to_id["server1"]
+        server2_id = manager.name_to_id["server2"]
+        assert server1_id in manager.clients
+        assert server2_id in manager.clients
 
     print("✓ Multiple server connections work")
 
@@ -149,8 +159,10 @@ async def test_connect_all_with_failures(mock_client):
 
         # Should have connected to good server despite bad server failure
         assert len(manager.clients) == 1
-        assert "good-server" in manager.clients
-        assert "bad-server" not in manager.clients
+        assert "good-server" in manager.name_to_id
+        good_server_id = manager.name_to_id["good-server"]
+        assert good_server_id in manager.clients
+        assert "bad-server" not in manager.name_to_id
 
     print("✓ connect_all continues on failures")
 
@@ -161,13 +173,14 @@ async def test_disconnect_server(test_config, mock_client):
     manager = MCPClientManager()
 
     with patch("sabre.server.mcp.client_manager.MCPClient", return_value=mock_client):
-        await manager.connect(test_config)
-        assert "test-server" in manager.clients
+        connector_id = await manager.connect(test_config)
+        assert connector_id in manager.clients
 
-        await manager.disconnect("test-server")
+        await manager.disconnect(connector_id)
 
-        assert "test-server" not in manager.clients
-        assert "test-server" not in manager.configs
+        assert connector_id not in manager.clients
+        assert connector_id not in manager.configs
+        assert "test-server" not in manager.name_to_id
         mock_client.disconnect.assert_called_once()
 
     print("✓ Server disconnection works")
@@ -208,14 +221,19 @@ async def test_disconnect_all(mock_client):
 
 @pytest.mark.asyncio
 async def test_get_client(test_config, mock_client):
-    """Test getting a client by name."""
+    """Test getting a client by UUID."""
     manager = MCPClientManager()
 
     with patch("sabre.server.mcp.client_manager.MCPClient", return_value=mock_client):
-        await manager.connect(test_config)
+        connector_id = await manager.connect(test_config)
 
-        client = manager.get_client("test-server")
+        # Get client by UUID
+        client = manager.get_client(connector_id)
         assert client is mock_client
+
+        # Also test getting client by name
+        client_by_name = manager.get_client_by_name("test-server")
+        assert client_by_name is mock_client
 
     print("✓ get_client works correctly")
 
@@ -236,15 +254,19 @@ async def test_has_server(test_config, mock_client):
     """Test checking if server is connected."""
     manager = MCPClientManager()
 
-    assert manager.has_server("test-server") is False
+    # Check by name (using name_to_id mapping)
+    assert "test-server" not in manager.name_to_id
 
     with patch("sabre.server.mcp.client_manager.MCPClient", return_value=mock_client):
-        await manager.connect(test_config)
+        connector_id = await manager.connect(test_config)
 
-        assert manager.has_server("test-server") is True
-        assert manager.has_server("nonexistent") is False
+        # Check connector registered
+        assert manager.has_connector(connector_id) is True
+        # Check name mapping exists
+        assert "test-server" in manager.name_to_id
+        assert "nonexistent" not in manager.name_to_id
 
-    print("✓ has_server works correctly")
+    print("✓ has_connector/name_to_id works correctly")
 
 
 @pytest.mark.asyncio
@@ -299,11 +321,17 @@ async def test_get_all_tools(mock_client):
 
         all_tools = await manager.get_all_tools()
 
+        # get_all_tools returns dict with UUID keys
         assert len(all_tools) == 2
-        assert "server1" in all_tools
-        assert "server2" in all_tools
-        assert len(all_tools["server1"]) == 1
-        assert all_tools["server1"][0].name == "server1_tool"
+
+        # Get UUIDs for the servers
+        server1_id = manager.name_to_id["server1"]
+        server2_id = manager.name_to_id["server2"]
+
+        assert server1_id in all_tools
+        assert server2_id in all_tools
+        assert len(all_tools[server1_id]) == 1
+        assert all_tools[server1_id][0].name == "server1_tool"
 
     print("✓ get_all_tools works correctly")
 
@@ -314,15 +342,15 @@ async def test_health_check(test_config, mock_client):
     manager = MCPClientManager()
 
     with patch("sabre.server.mcp.client_manager.MCPClient", return_value=mock_client):
-        await manager.connect(test_config)
+        connector_id = await manager.connect(test_config)
 
-        # Healthy server
-        is_healthy = await manager.health_check("test-server")
+        # Healthy server - health_check uses UUID keys
+        is_healthy = await manager.health_check(connector_id)
         assert is_healthy is True
 
         # Test with failing list_tools
         mock_client.list_tools = AsyncMock(side_effect=Exception("Health check failed"))
-        is_healthy = await manager.health_check("test-server")
+        is_healthy = await manager.health_check(connector_id)
         assert is_healthy is False
 
     print("✓ health_check works correctly")
@@ -358,8 +386,12 @@ async def test_health_check_all(mock_client):
 
         health_status = await manager.health_check_all()
 
-        assert health_status["healthy"] is True
-        assert health_status["unhealthy"] is False
+        # health_check_all returns dict with UUID keys
+        healthy_id = manager.name_to_id["healthy"]
+        unhealthy_id = manager.name_to_id["unhealthy"]
+
+        assert health_status[healthy_id] is True
+        assert health_status[unhealthy_id] is False
 
     print("✓ health_check_all works correctly")
 
@@ -390,11 +422,11 @@ async def test_reconnect(test_config, mock_client):
 
     with patch("sabre.server.mcp.client_manager.MCPClient", return_value=mock_client):
         # Initial connection
-        await manager.connect(test_config)
-        assert "test-server" in manager.clients
+        connector_id = await manager.connect(test_config)
+        assert connector_id in manager.clients
 
-        # Reconnect
-        await manager.reconnect("test-server")
+        # Reconnect using UUID
+        await manager.reconnect(connector_id)
 
         # Should have disconnected and reconnected
         mock_client.disconnect.assert_called()

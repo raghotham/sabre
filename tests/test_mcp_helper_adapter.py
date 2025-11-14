@@ -241,7 +241,8 @@ async def test_transform_result(mock_manager):
 @pytest.mark.asyncio
 async def test_invoke_tool_server_not_found(mock_manager):
     """Test invoking tool when server not found."""
-    mock_manager.has_server.return_value = False
+    # Mock name_to_id to not have the server
+    mock_manager.name_to_id = {}
 
     adapter = MCPHelperAdapter(mock_manager)
 
@@ -267,13 +268,16 @@ async def test_invoke_tool_success(mock_manager, sample_tools):
     """Test successful tool invocation."""
     mock_manager.get_all_tools.return_value = sample_tools
 
+    # Mock name_to_id mapping
+    mock_manager.name_to_id = {"test-server": "uuid-123"}
+
     # Mock client and tool call
     mock_client = Mock()
     mock_client.call_tool = AsyncMock(return_value=MCPToolResult(
         content=[MCPContent(type="text", text="Success!")],
         is_error=False,
     ))
-    mock_manager.get_client.return_value = mock_client
+    mock_manager.get_client_by_name.return_value = mock_client
 
     adapter = MCPHelperAdapter(mock_manager)
     await adapter.refresh_tools()

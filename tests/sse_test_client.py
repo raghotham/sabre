@@ -2,16 +2,26 @@
 Simple SSE test client to verify event reception.
 
 Connects to test server and prints received events.
+
+NOTE: This is an integration test that requires a running test server.
+It is not a unit test and should not be run as part of the regular test suite.
 """
 
 import asyncio
 import httpx
 import json
 import time
+import pytest
 
 
+@pytest.mark.skip(reason="Requires running test server at localhost:8012 - manual integration test only")
+@pytest.mark.asyncio
 async def test_sse_client():
-    """Connect to SSE test server and print events."""
+    """Connect to SSE test server and print events.
+
+    NOTE: This test requires a running test server at localhost:8012.
+    This is a manual integration test, not part of the automated test suite.
+    """
     url = "http://localhost:8012/test-sse"
 
     print(f"[CLIENT] Connecting to {url}")
@@ -52,4 +62,7 @@ async def test_sse_client():
 
 
 if __name__ == "__main__":
+    print("⚠️  This is a manual integration test.")
+    print("    Make sure the test server is running at http://localhost:8012")
+    print()
     asyncio.run(test_sse_client())
