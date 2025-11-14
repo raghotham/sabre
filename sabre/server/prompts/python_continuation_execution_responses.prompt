@@ -149,8 +149,8 @@ The current AMD CEO is
 <helpers>
 search_results = Search.web_search("current AMD CEO", total_links_to_return=1)  # list of SearchResult objects
 pages = download(search_results)
-var2 = llm_call([var1], "extract the name of AMD CEO")
-result(var2)
+ceo_name = llm_call([pages], "extract the name of AMD CEO")
+result(ceo_name)
 </helpers>
 </complete>
 
