@@ -186,20 +186,11 @@ class DatabaseHelpers:
 
             conn.close()
 
-            total_rows = sum(info["row_count"] for info in schema_info["tables"].values())
-            summary_lines = [
-                f"Connected and discovered database: {db_path}",
-                f"Found {len(tables)} tables: {', '.join(tables) if tables else 'None'}",
-                f"Total rows across all tables: {total_rows}",
-            ]
-
-            if schema_info.get("tables"):
-                summary_lines.append("Columns by table:")
-                for table_name, table_info in schema_info["tables"].items():
-                    columns = ", ".join(col["name"] for col in table_info["columns"])
-                    summary_lines.append(f"- {table_name}: {columns}")
-
-            return "\n".join(summary_lines)
+            return (
+                f"Connected and discovered database: {db_path}\n"
+                + f"Found {len(tables)} tables: {', '.join(tables)}\n"
+                + f"Total rows across all tables: {sum(info['row_count'] for info in schema_info['tables'].values())}"
+            )
 
         except Exception as e:
             return f"Error connecting to database {db_path}: {str(e)}"
