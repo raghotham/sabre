@@ -523,8 +523,12 @@ class Orchestrator:
                 # Extract message numbers from filenames (figure_1_1_1.png -> 1)
                 message_nums = set()
                 for fig_path in existing_figures:
-                    parts = fig_path.split("_")
-                    if len(parts) >= 2 and parts[0].endswith("figure"):
+                    # Use basename only to avoid splitting on directory path separators
+                    from pathlib import Path
+
+                    filename = Path(fig_path).name
+                    parts = filename.split("_")
+                    if len(parts) >= 2 and parts[0] == "figure":
                         try:
                             message_nums.add(int(parts[1]))
                         except ValueError:
