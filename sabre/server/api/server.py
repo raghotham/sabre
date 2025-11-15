@@ -12,10 +12,11 @@ import os
 import time
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 import jsonpickle
 
 from sabre.common import (
@@ -31,6 +32,7 @@ from sabre.common.paths import get_logs_dir, get_files_dir, ensure_dirs, SabrePa
 from sabre.server.orchestrator import Orchestrator
 from sabre.server.python_runtime import PythonRuntime
 from sabre.server.api.connector_store import ConnectorStore
+from sabre.server.conversation_logger import ConversationLogger
 
 logger = logging.getLogger(__name__)
 
@@ -53,11 +55,14 @@ class SessionManager:
         self.mcp_adapter = None
         self._init_mcp()
 
+        # Conversation logger
+        self.conversation_logger = ConversationLogger()
+
         # Create orchestrator with executor and runtime
         # ResponseExecutor reads OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL from env
         executor = ResponseExecutor()
         runtime = PythonRuntime(mcp_adapter=self.mcp_adapter)
-        self.orchestrator = Orchestrator(executor, runtime)
+        self.orchestrator = Orchestrator(executor, runtime, conversation_logger=self.conversation_logger)
 
     def _init_mcp(self):
         """Initialize MCP config loader (actual connection happens in async context)."""
@@ -293,8 +298,14 @@ manager = SessionManager()
 
 @app.get("/")
 async def root():
-    """Root endpoint - reserved for future UI."""
-    return {"status": "ok", "service": "sabre", "message": "SABRE API - use /v1/ endpoints"}
+    """Conversation viewer UI."""
+    ui_file = Path(__file__).parent / "ui.html"
+    if ui_file.exists():
+        html_content = ui_file.read_text()
+        return HTMLResponse(content=html_content)
+    else:
+        # Fallback if UI file doesn't exist
+        return {"status": "ok", "service": "sabre", "message": "SABRE API - use /v1/ endpoints"}
 
 
 @app.get("/v1/health")
@@ -384,6 +395,11 @@ async def message_endpoint(request: Request):
                 node_id = event.node_id[:8] if hasattr(event, "node_id") and event.node_id else "N/A"
                 depth = event.depth if hasattr(event, "depth") else "N/A"
                 event_type = event.type.value if hasattr(event, "type") else type(event).__name__
+
+                # Log event to conversation file (use conversation_id from event)
+                event_conversation_id = getattr(event, "conversation_id", None)
+                if event_conversation_id:
+                    manager.conversation_logger.log_event(event_conversation_id, event)
 
                 # CRITICAL: Encode event NOW (before queueing) so generator can yield immediately
                 encoded = jsonpickle.encode(event)
@@ -826,6 +842,42 @@ async def delete_connector(connector_id: str):
     except Exception as e:
         logger.error(f"Failed to delete connector {connector_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================
+# Conversation Viewer API
+# ============================================================
+
+
+@app.get("/v1/conversations")
+async def list_conversations(limit: int = 100):
+    """List recent conversations."""
+    conversations = manager.conversation_logger.list_conversations(limit=limit)
+    return {"conversations": conversations}
+
+
+@app.get("/v1/conversations/{conversation_id}")
+async def get_conversation(conversation_id: str):
+    """Get a specific conversation's events."""
+    events = manager.conversation_logger.get_conversation(conversation_id)
+    return {"conversation_id": conversation_id, "events": events}
+
+
+@app.get("/v1/conversations/{conversation_id}/turns")
+async def get_conversation_turns(conversation_id: str):
+    """Get conversation messages from logged conversation file."""
+    try:
+        # Read messages from conversation logger
+        messages = manager.conversation_logger.get_conversation(conversation_id)
+
+        return {
+            "conversation_id": conversation_id,
+            "messages": messages,
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching conversation messages: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch conversation: {str(e)}")
 
 
 if __name__ == "__main__":
