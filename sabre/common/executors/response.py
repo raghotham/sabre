@@ -166,11 +166,12 @@ class ResponseExecutor:
         base64_imgs = 0
 
         if image_attachments:
-            for img in image_attachments:
+            for idx, img in enumerate(image_attachments):
                 if isinstance(img, ImageContent):
                     if img.is_file_reference:
                         message_content.append({"type": "input_image", "file_id": img.file_id})
                         file_refs += 1
+                        logger.debug(f"  Adding file_id ref {idx + 1}: {img.file_id}")
                     else:
                         message_content.append(
                             {
@@ -179,8 +180,9 @@ class ResponseExecutor:
                             }
                         )
                         base64_imgs += 1
+                        logger.debug(f"  Adding base64 image {idx + 1}: {len(img.image_data)} bytes")
 
-            logger.info(f"Sending structured input: 1 text + {file_refs} file_id refs + {base64_imgs} base64 images")
+            logger.info(f"📤 Sending to OpenAI API: 1 text + {file_refs} file_id refs + {base64_imgs} base64 images")
         else:
             logger.info(f"Sending simple text input: {len(input_text)} chars")
 
