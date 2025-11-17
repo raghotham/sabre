@@ -10,7 +10,7 @@ import logging
 import os
 import time
 import uuid
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 
 from fastapi import Request, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
@@ -37,7 +37,7 @@ class ChatMessage(BaseModel):
     """OpenAI chat message."""
 
     role: str
-    content: str
+    content: Union[str, List[Dict[str, Any]]]  # Can be string or array of content parts
 
 
 class ChatCompletionRequest(BaseModel):
@@ -112,7 +112,18 @@ async def chat_completions_endpoint(request: Request, manager):
 
     # Extract user message from messages array
     # Concatenate all user messages
-    user_messages = [msg.content for msg in req.messages if msg.role == "user"]
+    user_messages = []
+    for msg in req.messages:
+        if msg.role == "user":
+            # Content can be string or array of content parts
+            if isinstance(msg.content, str):
+                user_messages.append(msg.content)
+            elif isinstance(msg.content, list):
+                # Extract text from content parts
+                for part in msg.content:
+                    if isinstance(part, dict) and part.get("type") == "text":
+                        user_messages.append(part.get("text", ""))
+
     if not user_messages:
         raise HTTPException(status_code=400, detail="At least one user message is required")
 
