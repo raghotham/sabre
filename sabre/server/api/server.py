@@ -31,6 +31,7 @@ from sabre.common.paths import get_logs_dir, get_files_dir, ensure_dirs, SabrePa
 from sabre.server.orchestrator import Orchestrator
 from sabre.server.python_runtime import PythonRuntime
 from sabre.server.api.connector_store import ConnectorStore
+from sabre.server.api import openai_endpoints
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,7 @@ class SessionManager:
             all_configs = {}
 
             # Add bootstrap configs (from YAML) - mark as yaml source
-            if hasattr(self, 'mcp_configs'):
+            if hasattr(self, "mcp_configs"):
                 for config in self.mcp_configs:
                     config.source = "yaml"
                     all_configs[config.id] = config
@@ -106,7 +107,9 @@ class SessionManager:
             for connector_id, config in persisted_configs.items():
                 all_configs[connector_id] = config
 
-            logger.info(f"Total connectors to connect: {len(all_configs)} ({len(self.mcp_configs) if hasattr(self, 'mcp_configs') else 0} from YAML, {len(persisted_configs)} persisted)")
+            logger.info(
+                f"Total connectors to connect: {len(all_configs)} ({len(self.mcp_configs) if hasattr(self, 'mcp_configs') else 0} from YAML, {len(persisted_configs)} persisted)"
+            )
 
             # Register all connectors (both enabled and disabled)
             # Don't auto-connect on bootstrap to avoid startup errors
@@ -140,7 +143,9 @@ class SessionManager:
             self.mcp_adapter = MCPHelperAdapter(self.mcp_manager, event_loop=asyncio.get_running_loop())
             await self.mcp_adapter.refresh_tools()
 
-            logger.info(f"MCP integration initialized with {self.mcp_adapter.get_tool_count()} tools from {len(self.mcp_manager.list_servers())} servers")
+            logger.info(
+                f"MCP integration initialized with {self.mcp_adapter.get_tool_count()} tools from {len(self.mcp_manager.list_servers())} servers"
+            )
 
             # Update runtime with MCP adapter
             if self.orchestrator and self.orchestrator.runtime:
@@ -538,6 +543,29 @@ async def message_endpoint(request: Request):
             "Connection": "keep-alive",
         },
     )
+
+
+@app.post("/v1/chat/completions")
+async def chat_completions(request: Request):
+    """
+    OpenAI-compatible chat completions endpoint.
+
+    Allows external benchmarks (datascibench, gaia, tau2, etc.) to use SABRE
+    as a drop-in replacement for OpenAI's API.
+
+    Timeout: 300 seconds (5 minutes) to allow for agentic workflows.
+    """
+    return await openai_endpoints.chat_completions_endpoint(request, manager)
+
+
+@app.get("/v1/models")
+async def models(request: Request):
+    """
+    OpenAI-compatible models listing endpoint.
+
+    Returns the model SABRE is currently using.
+    """
+    return await openai_endpoints.models_endpoint(request)
 
 
 @app.post("/v1/cancel/{request_id}")
