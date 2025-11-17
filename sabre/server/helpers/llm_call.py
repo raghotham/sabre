@@ -33,9 +33,9 @@ def run_async_from_sync(coro: Coroutine[None, None, T], timeout: int = 300) -> T
     # If we're somehow already on an event loop (shouldn't happen for sync helpers),
     # fail fast to avoid deadlocks.
     try:
-        running_loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
     except RuntimeError:
-        running_loop = None
+        pass  # No running loop - this is expected
     else:
         msg = "run_async_from_sync() cannot be called from within a running event loop"
         logger.error(msg)
@@ -175,6 +175,12 @@ class LLMCall:
                 # Don't embed base64 in text - collect for structured attachment
                 context_parts.append(f"### Context {i + 1} (Image)\n[Image {i + 1}]")
                 image_attachments.append(expr)
+                logger.info(
+                    f"  📷 Collected ImageContent {i + 1}: "
+                    f"has_file_id={expr.is_file_reference}, "
+                    f"has_base64={expr.image_data is not None}, "
+                    f"mime_type={expr.mime_type}"
+                )
             elif isinstance(expr, Content):
                 # Use get_str() for Content objects
                 context_parts.append(f"### Context {i + 1}\n{expr.get_str()}")
@@ -224,15 +230,25 @@ class LLMCall:
             # Upload images to Files API before passing to orchestrator
             uploaded_images = []
             if image_attachments:
-                logger.info(f"Uploading {len(image_attachments)} images to Files API...")
-                for img in image_attachments:
+                logger.info(f"📤 Uploading {len(image_attachments)} images to Files API...")
+                for idx, img in enumerate(image_attachments):
                     # Upload and replace with file_id reference
+                    logger.debug(f"  Uploading image {idx + 1}/{len(image_attachments)}...")
                     file_id = await orchestrator._upload_image_to_files_api(img)
                     uploaded_images.append(ImageContent(file_id=file_id, mime_type=img.mime_type))
-                logger.info(f"Uploaded {len(uploaded_images)} images")
+                    logger.info(f"  ✓ Uploaded image {idx + 1}: file_id={file_id}, mime_type={img.mime_type}")
+                logger.info(f"✅ Successfully uploaded {len(uploaded_images)} images with file_id references")
 
             # RECURSIVE CALL with new orchestrator instance
             # Pass images as structured input to executor
+            if uploaded_images:
+                logger.info(
+                    f"🔄 Calling orchestrator.run() with structured input: "
+                    f"text ({len(input_text)} chars) + {len(uploaded_images)} image refs"
+                )
+            else:
+                logger.info(f"🔄 Calling orchestrator.run() with text only ({len(input_text)} chars)")
+
             result = await orchestrator.run(
                 conversation_id=None,  # Create new conversation
                 input_text=(input_text, uploaded_images) if uploaded_images else input_text,

@@ -331,7 +331,20 @@ class Orchestrator:
         image_refs = []
         if isinstance(input_text, tuple):
             input_text, image_refs = input_text
-            logger.info(f"Unpacked structured input: {len(input_text)} chars text, {len(image_refs)} image file_id(s)")
+            logger.info(f"📥 Unpacked structured input: {len(input_text)} chars text, {len(image_refs)} image refs")
+            # Log details about each image ref
+            for idx, img in enumerate(image_refs):
+                from sabre.common.models.messages import ImageContent
+
+                if isinstance(img, ImageContent):
+                    logger.info(
+                        f"  Image ref {idx + 1}: "
+                        f"has_file_id={img.is_file_reference}, "
+                        f"file_id={img.file_id if img.is_file_reference else 'N/A'}, "
+                        f"mime_type={img.mime_type}"
+                    )
+                else:
+                    logger.warning(f"  Image ref {idx + 1}: Unexpected type {type(img).__name__}")
 
         # Create streaming parser (state machine)
         parser = StreamingHelperParser()

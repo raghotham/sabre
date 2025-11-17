@@ -41,7 +41,7 @@ T = TypeVar('T')
 
 5. pandas_bind(expression: Any) -> pd.DataFrame. Allows you to bind data found in "expression" to a Pandas DataFrame. You can also pass Google Sheets urls (https://docs.google.com/spreadsheets/...) as the expression and it will return a Pandas DataFrame.
 
-6. download(expression_list: str | SearchResult | list[str] | list[SearchResult], max_urls: int = 10) -> list[Content]. Downloads web content and returns visual/file representations. Web pages are returned as ImageContent (full page screenshots via Playwright browser), PDFs as TextContent (extracted text), and CSVs as TextContent (file path reference). This is the PRIMARY way to access web content - you CAN and SHOULD use this to fetch external links. The screenshots allow you to see pages visually (layout, images, styling). Use llm_call() AFTER download() if you need to extract specific information from the visual content. Maximum 10 downloads per call (configurable via max_urls).
+6. download(expression_list: str | SearchResult | list[str] | list[SearchResult], max_urls: int = 10) -> list[Content]. Downloads web content and returns visual/file representations. Web pages are returned as ImageContent (full page screenshots via Playwright browser), PDFs as TextContent (extracted text), and CSVs as TextContent (file path reference). This is the PRIMARY way to access web content - you CAN and SHOULD use this to fetch external links. The screenshots allow you to see pages visually (layout, images, styling). Use llm_call() AFTER download() if you need to extract specific information from the visual content. Maximum 10 downloads per call (configurable via max_urls). <BEGIN CRITICAL>IMPORTANT: Search.web_search() returns ONLY metadata (URLs, titles, snippets) - NOT page content. You MUST call download() on the search results to get the actual page content before you can extract information from it. The pattern is always: Search → Download → Extract with llm_call(). Never try to extract information from SearchResult snippets alone - they are too short and incomplete.</END CRITICAL>
 
 7. result(expression) -> None. Allows you to capture a full answer, or partial result to the Users natural language query/question/task/problem so that I can emit that back to the User. All results that you've found and put in a result() call will be presented to you before you emit the final response to the User with the </complete> token.
 
@@ -149,8 +149,8 @@ The current AMD CEO is
 <helpers>
 search_results = Search.web_search("current AMD CEO", total_links_to_return=1)  # list of SearchResult objects
 pages = download(search_results)
-var2 = llm_call([var1], "extract the name of AMD CEO")
-result(var2)
+ceo_name = llm_call([pages], "extract the name of AMD CEO")
+result(ceo_name)
 </helpers>
 </complete>
 
