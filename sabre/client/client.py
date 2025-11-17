@@ -466,7 +466,7 @@ class Client:
             async with httpx.AsyncClient() as client:
                 # Fetch server health (including model) at startup
                 try:
-                    health_response = await client.get(f"{self.server_url}/health", timeout=5.0)
+                    health_response = await client.get(f"{self.server_url}/v1/health", timeout=5.0)
                     if health_response.status_code == 200:
                         health_data = health_response.json()
                         model = health_data.get("model", "unknown")

@@ -89,7 +89,7 @@ def start_server():
         max_retries = 40  # Increased to 20 seconds (40 * 0.5s)
         for i in range(max_retries):
             try:
-                response = requests.get(f"http://localhost:{port}/health", timeout=2)
+                response = requests.get(f"http://localhost:{port}/v1/health", timeout=2)
                 if response.status_code == 200:
                     print(f"Server started (PID: {server_process.pid}, port: {port})")
                     print(f"Server logs: {server_log}")

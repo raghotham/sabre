@@ -54,8 +54,16 @@ def main():
         '%(asctime)s - %(name)s - %(levelname)s - %(client_addr)s - "%(request_line)s" %(status_code)s'
     )
 
-    # Run server
-    uvicorn.run("sabre.server.api.server:app", host="0.0.0.0", port=port, log_level="info", log_config=log_config)
+    # Run server with extended timeout for agentic workflows
+    # timeout_keep_alive: 300 seconds (5 minutes) for long-running requests
+    uvicorn.run(
+        "sabre.server.api.server:app",
+        host="0.0.0.0",
+        port=port,
+        log_level="info",
+        log_config=log_config,
+        timeout_keep_alive=300,  # 5 minutes for agentic workflows
+    )
 
 
 if __name__ == "__main__":

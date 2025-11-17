@@ -2,6 +2,9 @@
 End-to-end workflow tests for MCP Connector API.
 
 Tests complete user workflows from API calls to persistence to runtime updates.
+
+NOTE: These tests require OPENAI_API_KEY to be set.
+Run with: OPENAI_API_KEY=sk-your-key uv run pytest tests/test_connector_e2e_workflow.py
 """
 
 import pytest
@@ -10,22 +13,34 @@ import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-os.environ['OPENAI_API_KEY'] = 'test-key-for-e2e-tests'
-
 from fastapi.testclient import TestClient
-from sabre.server.api.server import app, manager
+
+
+@pytest.fixture(scope="module", autouse=True)
+def require_api_key(check_api_key):
+    """Require API key for all tests in this module."""
+    pass
 
 
 @pytest.fixture
-def client():
+def app():
+    """Import and return the FastAPI app (after API key is validated)."""
+    from sabre.server.api.server import app, manager
+    return app, manager
+
+
+@pytest.fixture
+def client(app):
     """Create FastAPI test client with initialized session manager."""
     from sabre.server.mcp.client_manager import MCPClientManager
+
+    app_instance, manager = app
 
     # Initialize mcp_manager if not already done
     if manager.mcp_manager is None:
         manager.mcp_manager = MCPClientManager(connector_store=manager.connector_store)
 
-    return TestClient(app)
+    return TestClient(app_instance)
 
 
 @pytest.fixture

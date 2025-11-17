@@ -18,6 +18,7 @@ from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 
 logger = logging.getLogger(__name__)
 
+
 async def _get_browser():
     """Get the browser helper instance for the current event loop."""
     from sabre.server.helpers.browser import BrowserHelper
@@ -174,7 +175,8 @@ async def _download_async(urls_or_results: Any, max_urls: int = 10) -> list:
     import base64
     from sabre.common.models.messages import Content, ImageContent, TextContent
 
-    logger.info(f"download() called with: {type(urls_or_results)}")
+    logger.info(f"download() called with type: {type(urls_or_results).__name__}")
+    logger.debug(f"download() input value: {urls_or_results}")
 
     # Handle different input types - extract URLs
     urls = []
@@ -185,29 +187,40 @@ async def _download_async(urls_or_results: Any, max_urls: int = 10) -> list:
     if isinstance(urls_or_results, str):
         # Single URL string
         urls = [urls_or_results]
+        logger.info(f"Extracted single URL from string: {urls_or_results}")
     elif isinstance(urls_or_results, SearchResult):
         # Single SearchResult object
         urls = [urls_or_results.url]
+        logger.info(f"Extracted URL from SearchResult: {urls_or_results.url}")
     elif isinstance(urls_or_results, list):
         # List of URLs or search results
-        for item in urls_or_results:
+        logger.info(f"Processing list with {len(urls_or_results)} items")
+        for idx, item in enumerate(urls_or_results):
             if isinstance(item, str):
                 urls.append(item)
+                logger.debug(f"  [{idx}] String URL: {item}")
             elif isinstance(item, SearchResult):
                 # SearchResult object with .url attribute
                 urls.append(item.url)
+                logger.debug(f"  [{idx}] SearchResult URL: {item.url} (title: {getattr(item, 'title', 'N/A')})")
             elif isinstance(item, dict) and "link" in item:
                 # Search result dict with 'link' key (legacy support)
                 urls.append(item["link"])
+                logger.debug(f"  [{idx}] Dict with 'link': {item['link']}")
             elif isinstance(item, dict) and "url" in item:
                 # Search result dict with 'url' key (legacy support)
                 urls.append(item["url"])
+                logger.debug(f"  [{idx}] Dict with 'url': {item['url']}")
+            else:
+                logger.warning(f"  [{idx}] Skipped unknown item type: {type(item).__name__}")
 
     if not urls:
-        error_msg = f"ERROR: Could not extract URLs from input: {urls_or_results}"
+        error_msg = f"ERROR: Could not extract URLs from input type {type(urls_or_results).__name__}: {urls_or_results}"
         logger.error(error_msg)
         print(error_msg)
         return [TextContent(error_msg)]
+
+    logger.info(f"Successfully extracted {len(urls)} URL(s) for download")
 
     # Limit number of URLs
     if len(urls) > max_urls:
@@ -220,12 +233,13 @@ async def _download_async(urls_or_results: Any, max_urls: int = 10) -> list:
     # Download all URLs concurrently using asyncio.gather
     async def download_one(url: str) -> Content:
         """Download single URL and return Content object"""
+        logger.info(f"▶ Starting download: {url}")
         try:
             url_lower = url.lower()
 
             # Handle PDFs
             if url_lower.endswith(".pdf") or "pdf" in url_lower:
-                logger.info(f"Downloading PDF: {url}")
+                logger.info(f"  📄 Detected PDF format: {url}")
                 # Use simple HTTP for PDFs (run in thread to avoid blocking)
                 import requests
 
@@ -258,11 +272,11 @@ async def _download_async(urls_or_results: Any, max_urls: int = 10) -> list:
 
             # Handle CSVs
             elif url_lower.endswith(".csv") or "csv" in url_lower:
-                logger.info(f"Downloading CSV: {url}")
+                logger.info(f"  📊 Detected CSV format: {url}")
 
                 def _download_csv_wrapper():
                     csv_path = download_csv(url)
-                    logger.info(f"Downloaded CSV to: {csv_path}")
+                    logger.info(f"  ✓ CSV downloaded to: {csv_path}")
                     print(f"Downloaded CSV: {url} -> {csv_path}")
                     return TextContent(f"CSV file downloaded to: {csv_path}\nUse pd.read_csv('{csv_path}') to load it.")
 
@@ -271,29 +285,41 @@ async def _download_async(urls_or_results: Any, max_urls: int = 10) -> list:
 
             # Handle web pages - take screenshot
             else:
-                logger.info(f"Taking screenshot: {url}")
+                logger.info(f"  🌐 Web page (will screenshot): {url}")
                 # Get browser instance and take screenshot (properly async)
+                logger.debug("  Getting browser instance...")
                 browser = await _get_browser()
+                logger.debug("  Taking screenshot...")
                 screenshot_bytes = await browser.screenshot(url)
 
                 # Convert to base64
                 screenshot_b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
 
-                logger.info(f"Screenshot captured: {len(screenshot_bytes)} bytes")
+                logger.info(
+                    f"  ✓ Screenshot captured: {len(screenshot_bytes):,} bytes ({len(screenshot_b64):,} base64 chars)"
+                )
                 print(f"Downloaded (screenshot): {url}")
 
                 return ImageContent(image_data=screenshot_b64, mime_type="image/png")
 
         except Exception as e:
-            error_msg = f"ERROR: Failed to download {url}: {e}"
-            logger.error(error_msg)
+            error_msg = f"✗ Failed to download {url}: {type(e).__name__}: {e}"
+            logger.error(error_msg, exc_info=True)
             print(error_msg)
             return TextContent(error_msg)
 
     # Use asyncio.gather for concurrent downloads
     results = await asyncio.gather(*[download_one(url) for url in urls])
 
-    logger.info(f"Downloaded {len(results)} items")
+    # Count success vs errors
+    successes = sum(1 for r in results if not (isinstance(r, TextContent) and "ERROR" in str(r.sequence)))
+    errors = len(results) - successes
+
+    if errors > 0:
+        logger.warning(f"Download complete: {successes} succeeded, {errors} failed out of {len(results)} total")
+    else:
+        logger.info(f"Download complete: All {len(results)} items downloaded successfully")
+
     return list(results)
 
 
