@@ -321,17 +321,16 @@ async def test_get_all_tools(mock_client):
 
         all_tools = await manager.get_all_tools()
 
-        # get_all_tools returns dict with UUID keys
+        # get_all_tools returns dict with configured name keys (not UUIDs)
         assert len(all_tools) == 2
 
-        # Get UUIDs for the servers
-        server1_id = manager.name_to_id["server1"]
-        server2_id = manager.name_to_id["server2"]
-
-        assert server1_id in all_tools
-        assert server2_id in all_tools
-        assert len(all_tools[server1_id]) == 1
-        assert all_tools[server1_id][0].name == "server1_tool"
+        # Tools should be keyed by configured server names
+        assert "server1" in all_tools
+        assert "server2" in all_tools
+        assert len(all_tools["server1"]) == 1
+        assert all_tools["server1"][0].name == "server1_tool"
+        assert len(all_tools["server2"]) == 1
+        assert all_tools["server2"][0].name == "server2_tool"
 
     print("✓ get_all_tools works correctly")
 
