@@ -303,16 +303,31 @@ async def _download_async(urls_or_results: Any, max_urls: int = 10) -> list:
                 return ImageContent(image_data=screenshot_b64, mime_type="image/png")
 
         except Exception as e:
-            error_msg = f"✗ Failed to download {url}: {type(e).__name__}: {e}"
-            logger.error(error_msg, exc_info=True)
-            print(error_msg)
-            return TextContent(error_msg)
+            # Check if this is the HTTP2 protocol error (bot detection)
+            if "ERR_HTTP2_PROTOCOL_ERROR" in str(e):
+                logger.warning(f"  ⚠️  Bot detection (HTTP2 error) for {url}, trying HTTP fallback...")
+                try:
+                    # Fallback to simple HTTP request (synchronous, force HTTP not browser)
+                    markdown_text = Web.get_url(url, use_browser=False)
+                    logger.info(f"  ✓ HTTP fallback succeeded for {url}")
+                    print(f"Downloaded (HTTP fallback): {url}")
+                    return TextContent(markdown_text)
+                except Exception as fallback_error:
+                    error_msg = f"✗ Failed to download {url} (screenshot and HTTP fallback both failed): {type(fallback_error).__name__}: {fallback_error}"
+                    logger.error(error_msg, exc_info=True)
+                    print(error_msg)
+                    return TextContent(error_msg)
+            else:
+                error_msg = f"✗ Failed to download {url}: {type(e).__name__}: {e}"
+                logger.error(error_msg, exc_info=True)
+                print(error_msg)
+                return TextContent(error_msg)
 
     # Use asyncio.gather for concurrent downloads
     results = await asyncio.gather(*[download_one(url) for url in urls])
 
     # Count success vs errors
-    successes = sum(1 for r in results if not (isinstance(r, TextContent) and "ERROR" in str(r.sequence)))
+    successes = sum(1 for r in results if not (isinstance(r, TextContent) and "ERROR" in str(r.text)))
     errors = len(results) - successes
 
     if errors > 0:
