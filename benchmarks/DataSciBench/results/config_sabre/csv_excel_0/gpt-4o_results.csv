@@ -1,0 +1,5 @@
+model_name,run_id,data_name,task_name,metric_name,function_name,result_value,result_cr,result_type
+gpt-4o,0,csv_excel_0,Data cleaning and preprocessing,Data Completeness Ratio,Data Completeness,True,2,single task (bool)
+gpt-4o,0,csv_excel_0,Data visualization,Visualization Quality Score,Visualization Quality,False,1,single task (bool)
+gpt-4o,0,csv_excel_0,Interpretability and report generation,Report Completeness Score,Report Completeness,True,2,single task (bool)
+gpt-4o,0,csv_excel_0,Completion Rate,CR,CR,0.8333333333333334,0.8333333333333334,Completion Rate

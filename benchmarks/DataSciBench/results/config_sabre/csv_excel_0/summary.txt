@@ -1,0 +1,7 @@
+Task: csv_excel_0
+Model: gpt-4o
+Config: config_sabre
+
+Evaluation Results: gpt-4o_results.csv
+Outputs: gpt-4o_outputs.jsonl
+Logs: gpt-4o_0/
