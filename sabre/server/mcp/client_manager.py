@@ -284,13 +284,16 @@ class MCPClientManager:
         """
         all_tools = {}
 
-        for name, client in self.clients.items():
+        for client_id, client in self.clients.items():
+            # Map UUID back to configured name
+            server_name = self.id_to_name.get(client_id, client_id)
+
             try:
                 tools = await client.list_tools()
-                all_tools[name] = tools
+                all_tools[server_name] = tools
             except Exception as e:
-                logger.error(f"Error getting tools from {name}: {e}")
-                all_tools[name] = []
+                logger.error(f"Error getting tools from {server_name}: {e}")
+                all_tools[server_name] = []
 
         return all_tools
 

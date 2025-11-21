@@ -55,6 +55,7 @@ class MCPClient:
         self.next_id = 1
         self.connected = False
         self.tools_cache: Optional[list[MCPTool]] = None
+        self._disconnect_lock = asyncio.Lock()  # Prevent race during shutdown
 
     async def connect(self) -> None:
         """
@@ -246,30 +247,34 @@ class MCPClient:
 
     async def disconnect(self) -> None:
         """Disconnect from MCP server"""
-        if not self.connected:
-            return
+        # Use lock to prevent race conditions during shutdown
+        async with self._disconnect_lock:
+            if not self.connected:
+                return
 
-        try:
-            if self.config.type == MCPTransportType.STDIO and self.process:
-                # Terminate process gracefully
-                self.process.terminate()
-                try:
-                    await asyncio.wait_for(self.process.wait(), timeout=5.0)
-                except asyncio.TimeoutError:
-                    logger.warning(f"Process {self.config.name} did not terminate, killing")
-                    self.process.kill()
-                    await self.process.wait()
+            try:
+                # Mark as disconnected first to prevent new requests
+                self.connected = False
 
-            elif self.config.type == MCPTransportType.SSE and self.http_client:
-                # Close HTTP client
-                await self.http_client.aclose()
-                self.http_client = None
+                if self.config.type == MCPTransportType.STDIO and self.process:
+                    # Terminate process gracefully
+                    self.process.terminate()
+                    try:
+                        await asyncio.wait_for(self.process.wait(), timeout=5.0)
+                    except asyncio.TimeoutError:
+                        logger.warning(f"Process {self.config.name} did not terminate, killing")
+                        self.process.kill()
+                        await self.process.wait()
 
-            self.connected = False
-            self.tools_cache = None
-            logger.info(f"Disconnected from MCP server: {self.config.name}")
-        except Exception as e:
-            logger.error(f"Error disconnecting from {self.config.name}: {e}")
+                elif self.config.type == MCPTransportType.SSE and self.http_client:
+                    # Close HTTP client
+                    await self.http_client.aclose()
+                    self.http_client = None
+
+                self.tools_cache = None
+                logger.info(f"Disconnected from MCP server: {self.config.name}")
+            except Exception as e:
+                logger.error(f"Error disconnecting from {self.config.name}: {e}")
 
     async def _send_request(self, method: str, params: Optional[dict[str, Any]] = None) -> JSONRPCResponse:
         """
@@ -332,16 +337,43 @@ class MCPClient:
         if not self.process or not self.process.stdin or not self.process.stdout:
             raise MCPConnectionError("Process not available")
 
+        if self.process.returncode is not None:
+            raise MCPConnectionError(f"Process terminated with exit code {self.process.returncode}")
+
+        # Extract request ID for validation (Fix Bug #3)
+        request_data = json.loads(request_json)
+        request_id = request_data.get("id")
+
         # Write request to stdin
         self.process.stdin.write((request_json + "\n").encode())
         await self.process.stdin.drain()
 
         # Read response from stdout (wait for timeout)
         try:
-            response_line = await asyncio.wait_for(self.process.stdout.readline(), timeout=self.config.timeout)
-            response_json = response_line.decode().strip()
+            response_json = ""
+            max_empty_lines = 10  # Prevent infinite loop on misbehaving servers
 
+            # Skip empty lines from server debug output
+            for _ in range(max_empty_lines):
+                try:
+                    response_line = await asyncio.wait_for(
+                        self.process.stdout.readline(),
+                        timeout=self.config.timeout
+                    )
+                except StopAsyncIteration:
+                    # Stream ended without data (empty response)
+                    break
+
+                response_json = response_line.decode().strip()
+
+                if response_json:
+                    break
+
+            # Check if we got a response after skipping empty lines
             if not response_json:
+                # Check if process died while waiting
+                if self.process.returncode is not None:
+                    raise MCPConnectionError(f"Process terminated with exit code {self.process.returncode}")
                 raise MCPProtocolError("Empty response from server")
 
             logger.debug(f"[{self.config.name}] Received: {response_json}")
@@ -355,9 +387,18 @@ class MCPClient:
                 error=response_data.get("error"),
             )
 
+            # Validate response ID matches request ID
+            if request_id is not None and response.id != request_id:
+                raise MCPProtocolError(
+                    f"Response ID mismatch: expected {request_id}, got {response.id}"
+                )
+
             return response
 
         except asyncio.TimeoutError:
+            # Check if process died during timeout
+            if self.process.returncode is not None:
+                raise MCPConnectionError(f"Process terminated with exit code {self.process.returncode}")
             raise MCPTimeoutError(f"Request timed out after {self.config.timeout}s")
         except json.JSONDecodeError as e:
             raise MCPProtocolError(f"Invalid JSON response: {e}")
@@ -374,10 +415,15 @@ class MCPClient:
             logger.debug(f"[{self.config.name}] Sending HTTP POST to {self.config.url}")
 
             # Send POST request with JSON-RPC payload
+            # Include Accept headers for Streamable HTTP protocol compatibility
             response = await self.http_client.post(
                 self.config.url,
                 json=request_data,
                 timeout=self.config.timeout,
+                headers={
+                    "Accept": "application/json, text/event-stream",
+                    "Content-Type": "application/json",
+                },
             )
 
             # Check HTTP status

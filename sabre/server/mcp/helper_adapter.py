@@ -123,6 +123,7 @@ class MCPHelperAdapter:
                                     kwargs[param_name] = arg
 
                 # Run async invocation synchronously with robust event loop handling
+                content_list = None
 
                 # If we have a reference to the main loop (from server), use it for thread-safe execution
                 if self._main_loop is not None:
@@ -131,29 +132,41 @@ class MCPHelperAdapter:
                         self.invoke_tool(qualified_name, **kwargs),
                         self._main_loop
                     )
-                    return future.result()
+                    content_list = future.result()
 
                 # Check if we're in a running event loop
-                try:
-                    loop = asyncio.get_running_loop()
-                    # We're in a running loop - need to execute in a new thread
-                    import concurrent.futures
+                else:
+                    try:
+                        loop = asyncio.get_running_loop()
+                        # We're in a running loop - need to execute in a new thread
+                        import concurrent.futures
 
-                    def run_async_in_thread():
-                        # Create new event loop for this thread
-                        new_loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(new_loop)
-                        try:
-                            return new_loop.run_until_complete(self.invoke_tool(qualified_name, **kwargs))
-                        finally:
-                            new_loop.close()
+                        def run_async_in_thread():
+                            # Create new event loop for this thread
+                            new_loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(new_loop)
+                            try:
+                                return new_loop.run_until_complete(self.invoke_tool(qualified_name, **kwargs))
+                            finally:
+                                new_loop.close()
 
-                    with concurrent.futures.ThreadPoolExecutor() as pool:
-                        future = pool.submit(run_async_in_thread)
-                        return future.result()
-                except RuntimeError:
-                    # No running loop - can use asyncio.run() directly
-                    return asyncio.run(self.invoke_tool(qualified_name, **kwargs))
+                        with concurrent.futures.ThreadPoolExecutor() as pool:
+                            future = pool.submit(run_async_in_thread)
+                            content_list = future.result()
+                    except RuntimeError:
+                        # No running loop - can use asyncio.run() directly
+                        content_list = asyncio.run(self.invoke_tool(qualified_name, **kwargs))
+
+                # Prepare Content object
+                result = self._prepare_result_content(content_list)
+
+                # Auto-print to stdout like Search.web_search() does
+                # This makes results appear in <helpers_result> automatically without explicit result() call
+                if result is not None:
+                    print(result.get_str())
+
+                return result
+
             except Exception as e:
                 logger.error(f"Error invoking MCP tool {qualified_name}: {e}")
                 raise
@@ -192,13 +205,13 @@ class MCPHelperAdapter:
         client = self.client_manager.get_client_by_name(server_name)
 
         # Call tool via MCP client
-        logger.debug(f"Invoking MCP tool: {qualified_name} with args: {kwargs}")
+        logger.info(f"Invoking MCP tool: {qualified_name} with args: {kwargs}")
         mcp_result = await client.call_tool(tool_name, kwargs)
 
         # Transform MCP result to SABRE Content
         sabre_content = self._transform_result(mcp_result)
 
-        logger.debug(f"MCP tool {qualified_name} returned {len(sabre_content)} content items")
+        logger.info(f"MCP tool {qualified_name} returned {len(sabre_content)} content items")
         return sabre_content
 
     def _transform_result(self, mcp_result: MCPToolResult) -> list[Content]:
@@ -248,6 +261,46 @@ class MCPHelperAdapter:
         else:
             logger.warning(f"Unsupported MCP content type: {mcp_content.type}")
             return None
+
+    def _prepare_result_content(self, content_list: list[Content]) -> Any:
+        """
+        Prepare Content object to return from MCP tool.
+
+        Returns a Content object with get_str() method, making MCP tools work
+        like other SABRE helpers (Bash, Search, Web).
+
+        Args:
+            content_list: List of SABRE Content objects from tool execution
+
+        Returns:
+            Content object with get_str() method, or None if empty
+        """
+        if not content_list:
+            return None
+
+        # If single content item, return it directly
+        if len(content_list) == 1:
+            return content_list[0]
+
+        # Multiple text items - join into single TextContent
+        if all(isinstance(content, TextContent) for content in content_list):
+            combined_text = "\n".join(content.get_str() for content in content_list)
+            return TextContent(combined_text)
+
+        # Mixed content - create a wrapper that combines all get_str() output
+        # This is similar to how Message.get_str() works
+        class MultiContent(Content):
+            """Wrapper for multiple content items"""
+            def __init__(self, contents: list[Content]):
+                self.contents = contents
+
+            def get_str(self) -> str:
+                return "\n".join(c.get_str() for c in self.contents)
+
+            def __str__(self) -> str:
+                return self.get_str()
+
+        return MultiContent(content_list)
 
     def generate_documentation(self) -> str:
         """
