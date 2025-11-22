@@ -19,6 +19,31 @@ class ConversationLogger:
         self.conversations_dir = get_logs_dir() / "conversations"
         self.conversations_dir.mkdir(parents=True, exist_ok=True)
 
+    def log_message(self, conversation_id: str, role: str, content: str):
+        """
+        Log a conversation message (user or assistant).
+
+        Args:
+            conversation_id: Conversation ID
+            role: Message role ('user' or 'assistant')
+            content: Message content text
+        """
+        if not conversation_id:
+            return
+
+        conv_file = self.conversations_dir / f"{conversation_id}.jsonl"
+
+        # Create message entry
+        message_data = {
+            "timestamp": datetime.now().isoformat(),
+            "role": role,
+            "content": content,
+        }
+
+        # Write to file (append mode)
+        with open(conv_file, "a") as f:
+            f.write(json.dumps(message_data, default=str) + "\n")
+
     def log_event(self, conversation_id: str, event: Event):
         """
         Log an event to the conversation file.
@@ -59,19 +84,22 @@ class ConversationLogger:
             conversation_id: Conversation ID
 
         Returns:
-            List of event dicts
+            List of message dicts
         """
         conv_file = self.conversations_dir / f"{conversation_id}.jsonl"
 
         if not conv_file.exists():
             return []
 
-        events = []
+        messages = []
         with open(conv_file) as f:
             for line in f:
-                events.append(json.loads(line))
+                entry = json.loads(line)
+                # Only include messages (role + content), skip events
+                if "role" in entry and "content" in entry:
+                    messages.append(entry)
 
-        return events
+        return messages
 
     def list_conversations(self, limit: int = 100) -> list[dict]:
         """
@@ -96,35 +124,35 @@ class ConversationLogger:
 
             conversation_id = conv_file.stem
 
-            # Read all events
+            # Read all entries
             with open(conv_file) as f:
                 lines = f.readlines()
 
             if not lines:
                 continue
 
-            first_event = json.loads(lines[0])
-            last_event = json.loads(lines[-1])
+            first_entry = json.loads(lines[0])
+            last_entry = json.loads(lines[-1])
 
             # Extract first user message for preview
             first_message = None
+            message_count = 0
             for line in lines:
-                event = json.loads(line)
-                # Look for ResponseTextEvent or similar that contains user input
-                # The first event typically contains the user input in metadata
-                if event.get("data") and isinstance(event["data"], dict):
-                    # Check for text in various possible fields
-                    text = event["data"].get("text") or event["data"].get("message") or event["data"].get("content")
-                    if text and len(text.strip()) > 0:
-                        first_message = text[:100]
-                        break
+                entry = json.loads(line)
+                # Look for user messages
+                if entry.get("role") == "user" and entry.get("content"):
+                    if first_message is None:
+                        first_message = entry["content"][:100]
+                    message_count += 1
+                elif entry.get("role") == "assistant":
+                    message_count += 1
 
             conversations.append(
                 {
                     "conversation_id": conversation_id,
-                    "start_time": first_event["timestamp"],
-                    "end_time": last_event["timestamp"],
-                    "event_count": len(lines),
+                    "start_time": first_entry["timestamp"],
+                    "end_time": last_entry["timestamp"],
+                    "event_count": message_count,  # Now counting messages instead of all entries
                     "preview": first_message,
                 }
             )
