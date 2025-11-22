@@ -90,7 +90,6 @@ class Orchestrator:
         self,
         executor: ResponseExecutor,
         python_runtime: PythonRuntime,
-        conversation_logger=None,
         session_logger=None,
         max_iterations: int = 10,
     ):
@@ -100,13 +99,11 @@ class Orchestrator:
         Args:
             executor: ResponseExecutor for LLM calls
             python_runtime: Python runtime for executing helpers
-            conversation_logger: Optional conversation logger for logging messages (legacy)
             session_logger: Optional session logger for execution tree logging
             max_iterations: Max continuation iterations (prevent infinite loops)
         """
         self.executor = executor
         self.runtime = python_runtime
-        self.conversation_logger = conversation_logger
         self.session_logger = session_logger
         self.max_iterations = max_iterations
         self.system_instructions = None  # Stored after conversation creation
@@ -459,10 +456,6 @@ class Orchestrator:
                 if event_callback:
                     await event_callback(event)
 
-        # Log user message to conversation file
-        if self.conversation_logger and conversation_id:
-            self.conversation_logger.log_message(conversation_id, "user", input_text)
-
         # Call executor (streams back via streaming_token_handler)
         # NOTE: No image attachments - images only go to client, not back to LLM
         # Pass instructions on every call (they don't persist in Responses API)
@@ -496,11 +489,6 @@ class Orchestrator:
 
         logger.info(f"Parsed response: {len(full_text)} chars, {len(helpers)} helpers")
         logger.info(f"Response text: {full_text[:500]}{'...' if len(full_text) > 500 else ''}")
-
-        # Log assistant response to conversation file
-        # (image URLs are embedded in the response text)
-        if self.conversation_logger and conversation_id:
-            self.conversation_logger.log_message(conversation_id, "assistant", full_text)
 
         # Emit response_text event with preview (not full text to reduce SSE payload)
         # Send first 500 + last 500 chars for preview, full text only in complete event
