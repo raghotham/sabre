@@ -30,6 +30,7 @@ from dataclasses import dataclass
 from sabre.common.executors.response import ResponseExecutor
 from sabre.server.python_runtime import PythonRuntime
 from sabre.server.streaming_parser import StreamingHelperParser
+from sabre.common.execution_context import set_execution_context, clear_execution_context
 from sabre.common import (
     Event,
     EventType,
@@ -90,6 +91,7 @@ class Orchestrator:
         executor: ResponseExecutor,
         python_runtime: PythonRuntime,
         conversation_logger=None,
+        session_logger=None,
         max_iterations: int = 10,
     ):
         """
@@ -98,12 +100,14 @@ class Orchestrator:
         Args:
             executor: ResponseExecutor for LLM calls
             python_runtime: Python runtime for executing helpers
-            conversation_logger: Optional conversation logger for logging messages
+            conversation_logger: Optional conversation logger for logging messages (legacy)
+            session_logger: Optional session logger for execution tree logging
             max_iterations: Max continuation iterations (prevent infinite loops)
         """
         self.executor = executor
         self.runtime = python_runtime
         self.conversation_logger = conversation_logger
+        self.session_logger = session_logger
         self.max_iterations = max_iterations
         self.system_instructions = None  # Stored after conversation creation
         self._shared_openai_client = None  # Lazy-initialized fallback client
@@ -120,6 +124,7 @@ class Orchestrator:
         conversation_id: str | None,
         input_text: str,
         tree: ExecutionTree,
+        session_id: str,
         instructions: str | None = None,
         model: str | None = None,
         max_tokens: int = 4096,
@@ -133,6 +138,7 @@ class Orchestrator:
             conversation_id: OpenAI conversation ID (None to create new)
             input_text: User input text
             tree: Execution tree for tracking
+            session_id: Session ID for logging (required - flows through all nested calls)
             instructions: System instructions for the conversation (required if conversation_id is None)
             model: Model to use (optional)
             max_tokens: Max output tokens
@@ -154,8 +160,20 @@ class Orchestrator:
         current_response_id = None
         current_input = input_text
         full_response_text = ""
+        iteration_start_time = time.time()
 
-        logger.info(f"Starting orchestration for conversation {conversation_id}")
+        logger.info(f"Starting orchestration for conversation {conversation_id}, session {session_id}")
+
+        # Log user message (only on first iteration, not for continuations)
+        if self.session_logger and iteration == 0:
+            root_node = tree.get_current_node()
+            self.session_logger.log_user_message(
+                session_id=session_id,
+                node_id=root_node.id if root_node else "root",
+                parent_id=root_node.parent_id if root_node else None,
+                depth=tree.get_depth(),
+                message=str(input_text),  # Full message, not truncated
+            )
 
         while iteration < self.max_iterations:
             iteration += 1
@@ -173,6 +191,21 @@ class Orchestrator:
 
             # Get tree context for events
             tree_context = self._build_tree_context(tree, response_node, conversation_id)
+
+            # Log node start for this response round
+            if self.session_logger:
+                self.session_logger.log_node_start(
+                    session_id=session_id,
+                    node_id=response_node.id,
+                    parent_id=response_node.parent_id,
+                    depth=tree.get_depth(),
+                    node_type="response",
+                    conversation_id=conversation_id,
+                    metadata={
+                        "iteration": iteration,
+                        "model": model or "gpt-4o",
+                    },
+                )
 
             # Emit response_start event
             if event_callback:
@@ -204,10 +237,50 @@ class Orchestrator:
             logger.debug(f"LLM response ({len(full_response_text)} chars): {full_response_text[:200]}...")
             logger.debug(f"Last 200 chars: ...{full_response_text[-200:]}")
 
+            # Log assistant message (full text, not truncated)
+            if self.session_logger:
+                self.session_logger.log_assistant_message(
+                    session_id=session_id,
+                    node_id=response_node.id,
+                    parent_id=response_node.parent_id,
+                    depth=tree.get_depth(),
+                    conversation_id=conversation_id,
+                    message=full_response_text,  # Full response, not truncated
+                )
+
+                # Log node completion with token stats
+                self.session_logger.log_node_complete(
+                    session_id=session_id,
+                    node_id=response_node.id,
+                    status="success",
+                    duration_ms=(time.time() - iteration_start_time) * 1000,
+                    tokens={
+                        "input": parsed.input_tokens,
+                        "output": parsed.output_tokens,
+                        "reasoning": parsed.reasoning_tokens,
+                    },
+                )
+
             # Check if response is an error
             if full_response_text.startswith("ERROR:"):
                 logger.error(f"API error in response: {full_response_text}")
                 tree.pop(ExecutionStatus.ERROR)
+
+                # Log error
+                if self.session_logger:
+                    self.session_logger.log_node_output(
+                        session_id=session_id,
+                        node_id=response_node.id,
+                        output_type="error",
+                        content=full_response_text,  # Full error, not truncated
+                    )
+                    self.session_logger.log_node_complete(
+                        session_id=session_id,
+                        node_id=response_node.id,
+                        status="error",
+                        duration_ms=(time.time() - iteration_start_time) * 1000,
+                        tokens=None,
+                    )
 
                 # Emit error event
                 if event_callback:
@@ -246,7 +319,11 @@ class Orchestrator:
             # Execute helpers (may trigger recursive orchestrator calls)
             # This saves images to disk for client display
             execution_results = await self._execute_helpers(
-                helpers=parsed.helpers, tree=tree, parent_tree_context=tree_context, event_callback=event_callback
+                helpers=parsed.helpers,
+                tree=tree,
+                parent_tree_context=tree_context,
+                session_id=session_id,
+                event_callback=event_callback,
             )
 
             # Upload images to Files API (converts base64 to file_id references)
@@ -471,6 +548,7 @@ class Orchestrator:
         helpers: list[str],
         tree: ExecutionTree,
         parent_tree_context: dict,
+        session_id: str,
         event_callback: Callable[[Event], Awaitable[None]] | None,
     ) -> list[tuple[str, list]]:
         """
@@ -509,6 +587,18 @@ class Orchestrator:
             parent_conv_id = parent_tree_context.get("conversation_id", "")
             helper_tree_context = self._build_tree_context(tree, helper_node, parent_conv_id)
 
+            # Log helper node start
+            if self.session_logger:
+                self.session_logger.log_node_start(
+                    session_id=session_id,
+                    node_id=helper_node.id,
+                    parent_id=helper_node.parent_id,
+                    depth=tree.get_depth(),
+                    node_type="helper",
+                    conversation_id=parent_conv_id,
+                    metadata={"block_number": i + 1, "code": code},  # Full code, not truncated
+                )
+
             # Emit start event
             if event_callback:
                 await event_callback(HelpersExecutionStartEvent(**helper_tree_context, code=code, block_number=i + 1))
@@ -518,14 +608,13 @@ class Orchestrator:
             # Execute code (may trigger recursive orchestrator.run via llm_call)
             # Run in thread pool to avoid blocking event loop (which prevents SSE from streaming)
             # Set execution context for helpers (like coerce) to access
-            from sabre.common.execution_context import set_execution_context, clear_execution_context
-
             current_loop = asyncio.get_running_loop()
             set_execution_context(
                 event_callback=event_callback,
                 tree=tree,
                 tree_context=helper_tree_context,
                 conversation_id=helper_tree_context["conversation_id"],
+                session_id=session_id,
                 loop=current_loop,
             )
 
@@ -618,6 +707,24 @@ class Orchestrator:
                     f"Helper {i + 1} succeeded: {len(result.output)} chars, {len(result.content)} content items, {len(image_urls)} images saved"
                 )
 
+                # Log helper output and completion
+                if self.session_logger:
+                    # Log the full output (not truncated)
+                    self.session_logger.log_node_output(
+                        session_id=session_id,
+                        node_id=helper_node.id,
+                        output_type="stdout",
+                        content=result.output,  # Full output, not truncated
+                    )
+                    # Log completion with duration
+                    self.session_logger.log_node_complete(
+                        session_id=session_id,
+                        node_id=helper_node.id,
+                        status="success",
+                        duration_ms=duration_ms,
+                        tokens=None,  # Helpers don't have token counts
+                    )
+
                 # Emit execution end event with results for client display
                 if event_callback:
                     # Build display content: TextContent with output + ImageContent with URLs (not base64)
@@ -653,6 +760,22 @@ class Orchestrator:
                 results.append((error_text, []))
                 tree.pop(ExecutionStatus.ERROR)
                 logger.error(f"Helper {i + 1} failed: {result.error}")
+
+                # Log helper error and completion
+                if self.session_logger:
+                    self.session_logger.log_node_output(
+                        session_id=session_id,
+                        node_id=helper_node.id,
+                        output_type="stderr",
+                        content=result.error,  # Full error, not truncated
+                    )
+                    self.session_logger.log_node_complete(
+                        session_id=session_id,
+                        node_id=helper_node.id,
+                        status="error",
+                        duration_ms=duration_ms,
+                        tokens=None,
+                    )
 
                 # Emit execution end event with error
                 if event_callback:

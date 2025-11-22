@@ -366,6 +366,7 @@ async def message_endpoint(request: Request):
         # Log session start
         manager.session_logger.log_session_start(session_id, user_message)
 
+
     logger.info(
         f"Received message request: session_id={session_id}, conversation_id={conversation_id}, message={user_message[:50]}..."
     )
