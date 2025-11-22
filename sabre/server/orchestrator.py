@@ -394,6 +394,11 @@ class Orchestrator:
 
         response_id = response.response_id
 
+        # If no tokens were streamed (e.g., API error), fallback to response content
+        if not full_text:
+            full_text = response.get_str()
+            logger.warning(f"No streaming tokens received, using response content instead: {len(full_text)} chars")
+
         # Finalize parser
         parser.finalize()
 
@@ -1057,15 +1062,12 @@ class Orchestrator:
             for item in content_items:
                 if isinstance(item, ImageContent) and not item.is_file_reference:
                     # Upload base64 image and replace with file_id reference
-                    try:
-                        file_id = await self._upload_image_to_files_api(item)
-                        # Create new ImageContent with file_id instead of base64
-                        updated_content.append(ImageContent(file_id=file_id, mime_type=item.mime_type))
-                        file_id_mentions.append(file_id)
-                        logger.info(f"Replaced base64 image with file reference: {file_id}")
-                    except Exception as e:
-                        logger.error(f"Failed to upload image, keeping base64: {e}")
-                        updated_content.append(item)  # Keep original
+                    # This is CRITICAL - we must upload successfully or fail the operation
+                    file_id = await self._upload_image_to_files_api(item)
+                    # Create new ImageContent with file_id instead of base64
+                    updated_content.append(ImageContent(file_id=file_id, mime_type=item.mime_type))
+                    file_id_mentions.append(file_id)
+                    logger.info(f"Replaced base64 image with file reference: {file_id}")
                 else:
                     updated_content.append(item)
 
