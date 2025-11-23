@@ -163,7 +163,7 @@ class Orchestrator:
 
         # Log user message (only on first iteration, not for continuations)
         if self.session_logger and iteration == 0:
-            root_node = tree.get_current_node()
+            root_node = tree.current
             self.session_logger.log_user_message(
                 session_id=session_id,
                 node_id=root_node.id if root_node else "root",
