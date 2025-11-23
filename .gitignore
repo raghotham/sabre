@@ -21,3 +21,8 @@ logs/
 node_modules/
 playwright.config.js
 tmp/
+
+# Next.js (ui)
+ui/.next/
+ui/out/
+ui/.env*.local

@@ -1,0 +1,122 @@
+name: Deploy SABRE Server to AWS App Runner
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'sabre/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/deploy-server.yml'
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  APP_RUNNER_SERVICE_NAME: sabre-server
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy to App Runner
+        run: |
+          # Check if service exists
+          if aws apprunner list-services --region ${{ env.AWS_REGION }} \
+             | jq -e ".ServiceSummaryList[] | select(.ServiceName==\"${{ env.APP_RUNNER_SERVICE_NAME }}\")"; then
+            echo "Service exists, updating..."
+
+            # Get service ARN
+            SERVICE_ARN=$(aws apprunner list-services --region ${{ env.AWS_REGION }} \
+              | jq -r ".ServiceSummaryList[] | select(.ServiceName==\"${{ env.APP_RUNNER_SERVICE_NAME }}\") | .ServiceArn")
+
+            # Trigger deployment by updating service
+            aws apprunner start-deployment \
+              --service-arn $SERVICE_ARN \
+              --region ${{ env.AWS_REGION }}
+
+            echo "Deployment started for service: $SERVICE_ARN"
+          else
+            echo "Service doesn't exist, creating..."
+
+            # Create ECR repository if it doesn't exist
+            aws ecr create-repository --repository-name sabre-server --region ${{ env.AWS_REGION }} || true
+
+            # Get ECR repository URI
+            ECR_URI=$(aws ecr describe-repositories --repository-names sabre-server --region ${{ env.AWS_REGION }} \
+              | jq -r '.repositories[0].repositoryUri')
+
+            # Build and push Docker image
+            aws ecr get-login-password --region ${{ env.AWS_REGION }} \
+              | docker login --username AWS --password-stdin $ECR_URI
+
+            docker build -t sabre-server .
+            docker tag sabre-server:latest $ECR_URI:latest
+            docker push $ECR_URI:latest
+
+            # Create App Runner service
+            aws apprunner create-service \
+              --service-name ${{ env.APP_RUNNER_SERVICE_NAME }} \
+              --source-configuration '{
+                "ImageRepository": {
+                  "ImageIdentifier": "'$ECR_URI':latest",
+                  "ImageRepositoryType": "ECR",
+                  "ImageConfiguration": {
+                    "Port": "8011",
+                    "RuntimeEnvironmentVariables": {
+                      "OPENAI_API_KEY": "${{ secrets.OPENAI_API_KEY }}"
+                    }
+                  }
+                },
+                "AutoDeploymentsEnabled": true
+              }' \
+              --instance-configuration '{
+                "Cpu": "1024",
+                "Memory": "2048"
+              }' \
+              --health-check-configuration '{
+                "Protocol": "HTTP",
+                "Path": "/health",
+                "Interval": 10,
+                "Timeout": 5,
+                "HealthyThreshold": 1,
+                "UnhealthyThreshold": 5
+              }' \
+              --region ${{ env.AWS_REGION }}
+
+            echo "Service created successfully"
+          fi
+
+      - name: Wait for deployment
+        run: |
+          SERVICE_ARN=$(aws apprunner list-services --region ${{ env.AWS_REGION }} \
+            | jq -r ".ServiceSummaryList[] | select(.ServiceName==\"${{ env.APP_RUNNER_SERVICE_NAME }}\") | .ServiceArn")
+
+          echo "Waiting for deployment to complete..."
+          aws apprunner wait service-running \
+            --service-arn $SERVICE_ARN \
+            --region ${{ env.AWS_REGION }}
+
+          echo "Deployment complete!"
+
+          # Get service URL
+          SERVICE_URL=$(aws apprunner describe-service \
+            --service-arn $SERVICE_ARN \
+            --region ${{ env.AWS_REGION }} \
+            | jq -r '.Service.ServiceUrl')
+
+          echo "Service URL: https://$SERVICE_URL"
