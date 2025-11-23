@@ -135,25 +135,41 @@ AWS Amplify needs a GitHub token to:
 - Set up webhooks for automatic deployments
 - Update build/deployment status
 
-**Steps:**
+**Recommended: Fine-Grained Token (better security)**
 
 1. Navigate to GitHub token settings:
-   - Go to https://github.com/settings/tokens
-   - Or: GitHub.com → Profile (top right) → Settings → Developer settings → Personal access tokens → Tokens (classic)
+   - Go to https://github.com/settings/personal-access-tokens/new
+   - Or: GitHub.com → Profile (top right) → Settings → Developer settings → Personal access tokens → **Fine-grained tokens**
 
-2. Click "Generate new token" → "Generate new token (classic)"
+2. Click "Generate new token"
 
 3. Configure the token:
-   - **Note**: `AWS Amplify - SABRE`
-   - **Expiration**: Choose based on your needs (90 days recommended, or No expiration for personal projects)
-   - **Scopes**: Check `repo` (Full control of private repositories)
-     - This automatically includes: repo:status, repo_deployment, public_repo, repo:invite, security_events
+   - **Token name**: `AWS Amplify - SABRE`
+   - **Expiration**: 90 days (or your preference)
+   - **Repository access**: "Only select repositories" → Choose your `sabre` repository
+   - **Permissions** (Repository permissions):
+     - **Contents**: Read and write
+     - **Metadata**: Read-only (automatically included)
+     - **Webhooks**: Read and write
+     - **Commit statuses**: Read and write
 
 4. Click "Generate token"
 
 5. **Copy the token immediately** - GitHub shows it only once!
-   - Token format: `ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
+   - Token format: `github_pat_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
    - Store it securely - you'll need it for the `aws amplify create-app` command below
+
+**Alternative: Classic Token (if fine-grained doesn't work)**
+
+If you encounter issues with fine-grained tokens:
+
+1. Go to https://github.com/settings/tokens
+2. Click "Generate new token (classic)"
+3. Configure:
+   - **Note**: `AWS Amplify - SABRE`
+   - **Expiration**: 90 days or No expiration
+   - **Scopes**: Check `repo` (Full control of private repositories)
+4. Generate and copy immediately (format: `ghp_xxxxxxxxxxxx...`)
 
 ### After Setup
 
