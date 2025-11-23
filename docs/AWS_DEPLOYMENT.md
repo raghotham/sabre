@@ -45,7 +45,7 @@ Add these secrets to your GitHub repository (Settings → Secrets and variables 
 # Create IAM user with these policies:
 # - AmazonEC2ContainerRegistryFullAccess
 # - AWSAppRunnerFullAccess
-# - AmplifyFullAccess
+# - AdministratorAccess-Amplify
 
 aws iam create-user --user-name github-actions-sabre
 aws iam attach-user-policy --user-name github-actions-sabre \
@@ -53,7 +53,7 @@ aws iam attach-user-policy --user-name github-actions-sabre \
 aws iam attach-user-policy --user-name github-actions-sabre \
   --policy-arn arn:aws:iam::aws:policy/AWSAppRunnerFullAccess
 aws iam attach-user-policy --user-name github-actions-sabre \
-  --policy-arn arn:aws:iam::aws:policy/AmplifyFullAccess
+  --policy-arn arn:aws:iam::aws:policy/AdministratorAccess-Amplify
 
 # Create access key
 aws iam create-access-key --user-name github-actions-sabre
