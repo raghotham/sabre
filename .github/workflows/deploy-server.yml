@@ -53,6 +53,46 @@ jobs:
           else
             echo "Service doesn't exist, creating..."
 
+            # Create IAM role for App Runner to access ECR
+            ROLE_NAME="AppRunnerECRAccessRole"
+
+            # Check if role exists
+            if ! aws iam get-role --role-name $ROLE_NAME 2>/dev/null; then
+              echo "Creating IAM role for App Runner ECR access..."
+
+              # Create trust policy
+              cat > /tmp/trust-policy.json <<EOF
+          {
+            "Version": "2012-10-17",
+            "Statement": [{
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "build.apprunner.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }]
+          }
+          EOF
+
+              # Create role
+              aws iam create-role \
+                --role-name $ROLE_NAME \
+                --assume-role-policy-document file:///tmp/trust-policy.json \
+                --description "Allows App Runner to access ECR"
+
+              # Attach ECR read-only policy
+              aws iam attach-role-policy \
+                --role-name $ROLE_NAME \
+                --policy-arn arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess
+
+              # Wait for role to propagate
+              sleep 10
+            fi
+
+            # Get role ARN
+            ROLE_ARN=$(aws iam get-role --role-name $ROLE_NAME --query 'Role.Arn' --output text)
+            echo "Using IAM role: $ROLE_ARN"
+
             # Create ECR repository if it doesn't exist
             aws ecr create-repository --repository-name sabre-server --region ${{ env.AWS_REGION }} || true
 
@@ -81,6 +121,9 @@ jobs:
                       "OPENAI_API_KEY": "${{ secrets.OPENAI_API_KEY }}"
                     }
                   }
+                },
+                "AuthenticationConfiguration": {
+                  "AccessRoleArn": "'$ROLE_ARN'"
                 },
                 "AutoDeploymentsEnabled": true
               }' \
