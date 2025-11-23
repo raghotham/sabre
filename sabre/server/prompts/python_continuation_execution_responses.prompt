@@ -569,6 +569,34 @@ more text
 ```
 </complete>
 
+Example: Analyzing a local image file. When asked to describe or analyze an image from the user's filesystem, use read_file() to load it as ImageContent, then pass it to llm_call() for vision analysis.
+
+{{user_colon_token}} Describe this image: /Users/john/Desktop/chess_puzzle.png
+
+{{assistant_colon_token}}
+I'll analyze the image for you.
+<helpers>
+image = read_file("/Users/john/Desktop/chess_puzzle.png")
+description = llm_call([image], "Describe this image in detail. What do you see? If it's a chess position, describe the pieces and their positions.")
+result(description)
+</helpers>
+
+{{user_colon_token}}
+<helpers_result>
+The image shows a chess puzzle with a white king on e1, a black queen on d4, and several pawns. The position appears to be a tactical puzzle where white needs to find the winning move...
+</helpers_result>
+
+{{assistant_colon_token}}
+Based on my analysis of the image:
+
+The chess puzzle shows a tactical position with:
+- White king on e1
+- Black queen on d4
+- Several pawns scattered across the board
+
+This appears to be a puzzle where white needs to find a winning tactical sequence. The key elements suggest looking for checks, pins, or forks to gain material advantage.
+</complete>
+
 Example: Reading source code to answer a users question about their source code project
 
 {{user_colon_token}} ~/dev/a.py, /home/user/dev/b.py, ~/dev/objects.py
