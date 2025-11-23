@@ -32,6 +32,7 @@ from sabre.server.orchestrator import Orchestrator
 from sabre.server.python_runtime import PythonRuntime
 from sabre.server.api.connector_store import ConnectorStore
 from sabre.server.api import openai_endpoints
+from sabre.server.session_logger import SessionLogger
 
 logger = logging.getLogger(__name__)
 
@@ -54,11 +55,18 @@ class SessionManager:
         self.mcp_adapter = None
         self._init_mcp()
 
+        # Session logger for execution tree visualization
+        self.session_logger = SessionLogger()
+
         # Create orchestrator with executor and runtime
         # ResponseExecutor reads OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL from env
         executor = ResponseExecutor()
         runtime = PythonRuntime(mcp_adapter=self.mcp_adapter)
-        self.orchestrator = Orchestrator(executor, runtime)
+        self.orchestrator = Orchestrator(
+            executor,
+            runtime,
+            session_logger=self.session_logger,
+        )
 
     def _init_mcp(self):
         """Initialize MCP config loader (actual connection happens in async context)."""
@@ -298,7 +306,7 @@ manager = SessionManager()
 
 @app.get("/")
 async def root():
-    """Root endpoint - reserved for future UI."""
+    """API root."""
     return {"status": "ok", "service": "sabre", "message": "SABRE API - use /v1/ endpoints"}
 
 
@@ -342,14 +350,25 @@ async def message_endpoint(request: Request):
     """
     HTTP SSE endpoint for chat messages.
 
-    Client POSTs: {"type": "message", "content": "user message text", "conversation_id": "..."|null}
+    Client POSTs: {"type": "message", "content": "user message text", "session_id": "..."|null}
     Server streams: SSE events with jsonpickle-encoded Event objects
     """
     data = await request.json()
     user_message = data.get("content", "")
     conversation_id = data.get("conversation_id")
+    session_id = data.get("session_id")
 
-    logger.info(f"Received message request: conversation_id={conversation_id}, message={user_message[:50]}...")
+    # Generate session ID if not provided (new session)
+    if not session_id:
+        session_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_") + str(uuid.uuid4())[:8]
+        logger.info(f"Generated new session ID: {session_id}")
+        # Log session start
+        manager.session_logger.log_session_start(session_id, user_message)
+
+
+    logger.info(
+        f"Received message request: session_id={session_id}, conversation_id={conversation_id}, message={user_message[:50]}..."
+    )
 
     if not user_message:
         # Return error as SSE stream
@@ -416,6 +435,7 @@ async def message_endpoint(request: Request):
                         tree=tree,
                         instructions=instructions,  # Required for new conversations
                         event_callback=event_callback,
+                        session_id=session_id,  # Pass session ID for logging
                     )
 
                     # Save conversation_id from orchestration result

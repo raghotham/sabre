@@ -11,6 +11,8 @@ import logging
 from typing import Any, Callable
 
 from sabre.common.models.messages import Content, TextContent
+from sabre.common.execution_context import get_execution_context
+from sabre.common import ExecutionNodeType, ExecutionStatus
 
 logger = logging.getLogger(__name__)
 
@@ -96,8 +98,6 @@ class SabreCall:
 
         # Push nested call node to execution tree
         if tree:
-            from sabre.common import ExecutionNodeType
-
             tree.push(
                 ExecutionNodeType.NESTED_LLM_CALL,
                 metadata={
@@ -111,18 +111,21 @@ class SabreCall:
             # This gives the recursive call full access to helpers
             instructions = orchestrator.load_default_instructions()
 
+            # Get session_id from execution context to maintain session logging
+            ctx = get_execution_context()
+            session_id = ctx.session_id if ctx else "unknown"
+
             # Run orchestration in new conversation (recursive!)
             result = await orchestrator.run(
                 conversation_id=None,  # New conversation
                 input_text=user_message,
                 tree=tree,
+                session_id=session_id,  # Pass session_id from parent context
                 instructions=instructions,
                 event_callback=event_callback,
             )
 
             if tree:
-                from sabre.common import ExecutionStatus
-
                 tree.pop(ExecutionStatus.COMPLETED)
 
             if not result.success:
@@ -141,7 +144,5 @@ class SabreCall:
         except Exception as e:
             logger.error(f"sabre_call exception: {e}", exc_info=True)
             if tree:
-                from sabre.common import ExecutionStatus
-
                 tree.pop(ExecutionStatus.ERROR)
             raise RuntimeError(f"sabre_call failed: {e}")

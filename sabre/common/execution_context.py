@@ -26,6 +26,7 @@ class ExecutionContext:
     tree: Optional["ExecutionTree"]
     tree_context: dict
     conversation_id: str
+    session_id: str
     loop: Optional[asyncio.AbstractEventLoop] = None
 
 
@@ -50,6 +51,7 @@ def set_execution_context(
     tree: Optional["ExecutionTree"],
     tree_context: dict,
     conversation_id: str,
+    session_id: str,
     loop: Optional[asyncio.AbstractEventLoop] = None,
 ) -> None:
     """
@@ -60,6 +62,7 @@ def set_execution_context(
         tree: Execution tree for tracking
         tree_context: Tree context metadata
         conversation_id: OpenAI conversation ID
+        session_id: Session ID for logging (required)
         loop: Event loop that should run async helper coroutines
     """
     ctx = ExecutionContext(
@@ -67,6 +70,7 @@ def set_execution_context(
         tree=tree,
         tree_context=tree_context,
         conversation_id=conversation_id,
+        session_id=session_id,
         loop=loop,
     )
     _execution_context_var.set(ctx)
