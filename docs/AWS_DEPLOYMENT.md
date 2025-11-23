@@ -130,13 +130,34 @@ aws amplify update-branch \
 
 ### Get GitHub Personal Access Token
 
-1. GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)
-2. Generate new token with `repo` scope
-3. Copy the token immediately (shown only once)
+AWS Amplify needs a GitHub token to:
+- Pull code from your repository for builds
+- Set up webhooks for automatic deployments
+- Update build/deployment status
+
+**Steps:**
+
+1. Navigate to GitHub token settings:
+   - Go to https://github.com/settings/tokens
+   - Or: GitHub.com → Profile (top right) → Settings → Developer settings → Personal access tokens → Tokens (classic)
+
+2. Click "Generate new token" → "Generate new token (classic)"
+
+3. Configure the token:
+   - **Note**: `AWS Amplify - SABRE`
+   - **Expiration**: Choose based on your needs (90 days recommended, or No expiration for personal projects)
+   - **Scopes**: Check `repo` (Full control of private repositories)
+     - This automatically includes: repo:status, repo_deployment, public_repo, repo:invite, security_events
+
+4. Click "Generate token"
+
+5. **Copy the token immediately** - GitHub shows it only once!
+   - Token format: `ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
+   - Store it securely - you'll need it for the `aws amplify create-app` command below
 
 ### After Setup
 
-Deployments trigger automatically on push to `main` when `viewer/` changes.
+Deployments trigger automatically on push to `main` when `ui/` changes.
 
 ## Part 4: Environment Variables
 
