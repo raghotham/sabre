@@ -1,0 +1,22 @@
+version: 1
+applications:
+  - appRoot: viewer
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - npm ci
+        build:
+          commands:
+            - npm run build
+      artifacts:
+        baseDirectory: .next
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - node_modules/**/*
+    buildSettings:
+      environment:
+        variables:
+          NEXT_PUBLIC_API_URL: $NEXT_PUBLIC_API_URL

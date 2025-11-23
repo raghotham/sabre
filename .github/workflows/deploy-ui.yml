@@ -1,0 +1,90 @@
+name: Deploy SABRE UI to AWS Amplify
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ui/**'
+      - '.github/workflows/deploy-ui.yml'
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy to Amplify
+        id: deploy
+        run: |
+          # Get Amplify App ID (assumes app is already created)
+          APP_ID="${{ secrets.AMPLIFY_APP_ID }}"
+
+          if [ -z "$APP_ID" ]; then
+            echo "Error: AMPLIFY_APP_ID secret not set"
+            echo "Please create Amplify app first and set AMPLIFY_APP_ID secret"
+            exit 1
+          fi
+
+          # Trigger a new build
+          BUILD_ID=$(aws amplify start-job \
+            --app-id $APP_ID \
+            --branch-name main \
+            --job-type RELEASE \
+            --region ${{ env.AWS_REGION }} \
+            | jq -r '.jobSummary.jobId')
+
+          echo "Started build: $BUILD_ID"
+          echo "build_id=$BUILD_ID" >> $GITHUB_OUTPUT
+
+      - name: Wait for deployment
+        run: |
+          APP_ID="${{ secrets.AMPLIFY_APP_ID }}"
+          BUILD_ID="${{ steps.deploy.outputs.build_id }}"
+
+          echo "Waiting for build $BUILD_ID to complete..."
+
+          while true; do
+            STATUS=$(aws amplify get-job \
+              --app-id $APP_ID \
+              --branch-name main \
+              --job-id $BUILD_ID \
+              --region ${{ env.AWS_REGION }} \
+              | jq -r '.job.summary.status')
+
+            echo "Build status: $STATUS"
+
+            if [ "$STATUS" = "SUCCEED" ]; then
+              echo "Build completed successfully!"
+              break
+            elif [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELLED" ]; then
+              echo "Build failed with status: $STATUS"
+              exit 1
+            fi
+
+            sleep 30
+          done
+
+          # Get the app URL
+          APP_URL=$(aws amplify get-app \
+            --app-id $APP_ID \
+            --region ${{ env.AWS_REGION }} \
+            | jq -r '.app.defaultDomain')
+
+          echo "Viewer URL: https://main.$APP_URL"
