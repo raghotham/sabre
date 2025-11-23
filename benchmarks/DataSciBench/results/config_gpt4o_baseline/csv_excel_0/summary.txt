@@ -1,0 +1,7 @@
+Task: csv_excel_0
+Model: gpt-4o-mini
+Config: config_gpt4o_baseline
+
+Evaluation Results: gpt-4o-mini_results.csv
+Outputs: gpt-4o-mini_outputs.jsonl
+Logs: gpt-4o-mini_0/

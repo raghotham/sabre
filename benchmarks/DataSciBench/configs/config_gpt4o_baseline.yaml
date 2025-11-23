@@ -1,0 +1,8 @@
+llm:
+  api_type: "openai"
+  base_url: "https://api.openai.com/v1"
+  api_key: "${OPENAI_API_KEY}"
+  model: "gpt-4o-mini"
+  timeout: 600
+
+repair_llm_output: true
