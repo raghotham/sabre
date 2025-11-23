@@ -7,7 +7,7 @@ This guide explains how to deploy SABRE to AWS using GitHub Actions for automate
 ```
 ┌──────────────────────┐
 │ GitHub Repository    │
-│  ├─ viewer/ (Next.js)│  → AWS Amplify (Frontend)
+│  ├─ ui/ (Next.js)    │  → AWS Amplify (Frontend)
 │  └─ sabre/ (Python)  │  → AWS App Runner (Backend)
 └──────────────────────┘
          │
@@ -16,7 +16,7 @@ This guide explains how to deploy SABRE to AWS using GitHub Actions for automate
   ┌─────────────────┐
   │ GitHub Actions  │
   │  ├─ deploy-server.yml   → Builds Docker, deploys to App Runner
-  │  └─ deploy-viewer.yml   → Triggers Amplify build
+  │  └─ deploy-ui.yml       → Triggers Amplify build
   └─────────────────┘
 ```
 
@@ -87,7 +87,7 @@ aws apprunner describe-service --service-arn [ARN] --region us-east-1 \
   | jq -r '.Service.ServiceUrl'
 ```
 
-## Part 3: Deploy SABRE Viewer (AWS Amplify)
+## Part 3: Deploy SABRE UI (AWS Amplify)
 
 Amplify requires one-time setup via AWS CLI:
 
@@ -96,7 +96,7 @@ Amplify requires one-time setup via AWS CLI:
 ```bash
 # 1. Create Amplify app
 aws amplify create-app \
-  --name sabre-viewer \
+  --name sabre-ui \
   --repository https://github.com/YOUR_USERNAME/sabre \
   --access-token [GITHUB_PERSONAL_ACCESS_TOKEN] \
   --region us-east-1
@@ -114,7 +114,7 @@ aws amplify create-branch \
 # 3. Set build spec path
 aws amplify update-app \
   --app-id $AMPLIFY_APP_ID \
-  --build-spec "$(cat viewer/amplify.yml)" \
+  --build-spec "$(cat ui/amplify.yml)" \
   --region us-east-1
 
 # 4. Set environment variable
@@ -161,7 +161,7 @@ aws apprunner update-service \
   --region us-east-1
 ```
 
-### Viewer (Amplify)
+### UI (Amplify)
 
 Set via AWS CLI:
 
@@ -190,14 +190,14 @@ curl https://$SERVER_URL/health
 curl https://$SERVER_URL/v1/sessions
 ```
 
-### Test Viewer
+### Test UI
 
 ```bash
-# Get viewer URL
-VIEWER_URL=$(aws amplify get-app --app-id $AMPLIFY_APP_ID --region us-east-1 \
+# Get UI URL
+UI_URL=$(aws amplify get-app --app-id $AMPLIFY_APP_ID --region us-east-1 \
   | jq -r '.app.defaultDomain')
 
-echo "Viewer: https://main.$VIEWER_URL"
+echo "UI: https://main.$UI_URL"
 ```
 
 ## Part 6: Continuous Deployment
@@ -206,7 +206,7 @@ Once set up, deployments happen automatically:
 
 1. **Push to main** → GitHub Actions triggers
 2. **Server changes** (`sabre/**`) → App Runner deploys
-3. **Viewer changes** (`viewer/**`) → Amplify builds
+3. **UI changes** (`ui/**`) → Amplify builds
 
 ### Manual Triggers
 
@@ -280,7 +280,7 @@ aws apprunner associate-custom-domain \
   --region us-east-1
 ```
 
-### Viewer (Amplify)
+### UI (Amplify)
 
 ```bash
 aws amplify create-domain-association \
