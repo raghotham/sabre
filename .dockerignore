@@ -1,0 +1,68 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv
+venv/
+ENV/
+env/
+
+# Credentials (IMPORTANT: Never include these in Docker images)
+.env
+.env.*
+*.key
+*.pem
+credentials.json
+secrets.json
+~/.openai/
+
+# Testing
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Development
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+tmp/
+temp/
+*.log
+*.tmp
+
+# CI/CD
+.github/
+
+# Benchmarks
+benchmarks/
+plans/
+llmvm/
+
+# Data directories
+data/
+logs/
+.cache/
+
+# macOS
+.DS_Store
+
+# Next.js UI
+ui/
