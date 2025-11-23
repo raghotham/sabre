@@ -148,10 +148,10 @@ AWS Amplify needs a GitHub token to:
    - **Expiration**: 90 days (or your preference)
    - **Repository access**: "Only select repositories" → Choose your `sabre` repository
    - **Permissions** (Repository permissions):
-     - **Contents**: Read and write
+     - **Contents**: Read-only (to pull code for builds)
      - **Metadata**: Read-only (automatically included)
-     - **Webhooks**: Read and write
-     - **Commit statuses**: Read and write
+     - **Webhooks**: Read and write (to set up automatic deployments)
+     - **Commit statuses**: Read and write (to update build status on commits)
 
 4. Click "Generate token"
 
