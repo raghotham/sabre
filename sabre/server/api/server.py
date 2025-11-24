@@ -226,7 +226,17 @@ async def check_playwright_installation():
             raise RuntimeError("Could not determine required chromium version")
 
         # Check if chromium_headless_shell is installed
-        playwright_cache = Path.home() / "Library" / "Caches" / "ms-playwright"
+        # Platform-specific paths for Playwright cache
+        import platform
+
+        system = platform.system()
+        if system == "Darwin":  # macOS
+            playwright_cache = Path.home() / "Library" / "Caches" / "ms-playwright"
+        elif system == "Windows":
+            playwright_cache = Path.home() / "AppData" / "Local" / "ms-playwright"
+        else:  # Linux and others
+            playwright_cache = Path.home() / ".cache" / "ms-playwright"
+
         headless_dir = playwright_cache / f"chromium_headless_shell-{chromium_version}"
 
         if not headless_dir.exists():
@@ -364,7 +374,6 @@ async def message_endpoint(request: Request):
         logger.info(f"Generated new session ID: {session_id}")
         # Log session start
         manager.session_logger.log_session_start(session_id, user_message)
-
 
     logger.info(
         f"Received message request: session_id={session_id}, conversation_id={conversation_id}, message={user_message[:50]}..."
