@@ -35,8 +35,8 @@ COPY sabre/ ./sabre/
 # Now install the sabre package
 RUN uv sync --frozen
 
-# Install Playwright chromium (required for Web helper)
-RUN uv run playwright install chromium --with-deps
+# Install Playwright chromium_headless_shell (required for Web helper)
+RUN uv run playwright install chromium --only-shell
 
 # Expose port
 EXPOSE 8011
