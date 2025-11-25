@@ -241,6 +241,9 @@ class LLMCall:
 
             # RECURSIVE CALL with new orchestrator instance
             # Pass images as structured input to executor
+            # Get session_id from context to maintain session logging
+            session_id = ctx.session_id if ctx else "unknown"
+
             if uploaded_images:
                 logger.info(
                     f"🔄 Calling orchestrator.run() with structured input: "
@@ -253,6 +256,7 @@ class LLMCall:
                 conversation_id=None,  # Create new conversation
                 input_text=(input_text, uploaded_images) if uploaded_images else input_text,
                 tree=tree,
+                session_id=session_id,  # Pass session_id from parent context
                 instructions=system_instructions,  # Pass our loaded instructions
                 event_callback=event_callback,  # Pass through event callback for client visibility
             )

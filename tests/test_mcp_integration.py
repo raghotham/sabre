@@ -45,17 +45,48 @@ def mock_mcp_process():
             self.stdin = AsyncMock()
             self.stdout = AsyncMock()
             self.stderr = AsyncMock()
-            self.request_count = 0
+            self.request_queue = []  # Track written requests
+
+        def track_write(self, data):
+            """Track stdin writes to extract request IDs"""
+            try:
+                request = json.loads(data.decode().strip())
+                self.request_queue.append(request)
+            except:
+                pass
 
         async def readline(self):
-            """Simulate MCP server responses."""
-            self.request_count += 1
+            """Simulate MCP server responses with matching request IDs."""
+            # Get the corresponding request from queue
+            if self.request_queue:
+                request = self.request_queue.pop(0)
+                request_id = request.get("id")
+                method = request.get("method", "")
+            else:
+                # Fallback for tests that don't track writes
+                request_id = 1
+                method = ""
 
-            # First request is usually tools/list
-            if self.request_count == 1:
+            # Notifications don't expect responses, so skip them
+            if method.startswith("notifications/"):
+                # Read next request immediately
+                return await self.readline()
+
+            # Return appropriate response based on method
+            if method == "initialize":
                 response = {
                     "jsonrpc": "2.0",
-                    "id": 1,
+                    "id": request_id,
+                    "result": {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {},
+                        "serverInfo": {"name": "test-server", "version": "1.0.0"}
+                    },
+                }
+            elif "tools/list" in method or not method:
+                response = {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
                     "result": {
                         "tools": [
                             {
@@ -73,10 +104,10 @@ def mock_mcp_process():
                     },
                 }
             else:
-                # Subsequent requests are tool calls
+                # Tool call or other request
                 response = {
                     "jsonrpc": "2.0",
-                    "id": self.request_count,
+                    "id": request_id,
                     "result": {
                         "content": [{"type": "text", "text": "Echo: test message"}]
                     },
@@ -95,6 +126,14 @@ def mock_mcp_process():
 
     process = MockMCPProcess()
     process.stdout.readline = process.readline
+
+    # Wrap stdin.write to track requests
+    original_write = process.stdin.write
+    def tracking_write(data):
+        process.track_write(data)
+        return original_write(data)
+    process.stdin.write = tracking_write
+
     return process
 
 

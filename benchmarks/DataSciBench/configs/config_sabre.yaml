@@ -1,0 +1,8 @@
+llm:
+  api_type: "openai"
+  base_url: "http://localhost:8011/v1"
+  api_key: "dummy"  # SABRE doesn't require API key but MetaGPT expects one
+  model: "gpt-4o"  # Model name doesn't matter for SABRE, but set for consistency
+  timeout: 600  # 10 minutes for agentic workflows
+
+repair_llm_output: true
