@@ -9,7 +9,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from sabre.common.paths import get_logs_dir
+from sabre.common.paths import get_sessions_base_dir, get_session_log_file, get_session_dir
 from sabre.common.models.events import Event
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ class SessionLogger:
 
     def __init__(self):
         """Initialize session logger."""
-        self.sessions_dir = get_logs_dir() / "sessions"
+        self.sessions_dir = get_sessions_base_dir()
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
 
     def log_session_start(self, session_id: str, message: str):
@@ -31,7 +31,15 @@ class SessionLogger:
             session_id: Session ID
             message: User's initial message
         """
-        session_file = self.sessions_dir / f"session_{session_id}.jsonl"
+        # Ensure session directory exists
+        session_dir = get_session_dir(session_id)
+        session_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create files subdirectory for session
+        files_dir = session_dir / "files"
+        files_dir.mkdir(parents=True, exist_ok=True)
+
+        session_file = get_session_log_file(session_id)
 
         entry = {
             "timestamp": datetime.now().isoformat(),
@@ -61,7 +69,7 @@ class SessionLogger:
             depth: Tree depth
             message: User message content
         """
-        session_file = self.sessions_dir / f"session_{session_id}.jsonl"
+        session_file = get_session_log_file(session_id)
 
         entry = {
             "timestamp": datetime.now().isoformat(),
@@ -96,7 +104,7 @@ class SessionLogger:
             conversation_id: OpenAI conversation ID
             message: Assistant message content
         """
-        session_file = self.sessions_dir / f"session_{session_id}.jsonl"
+        session_file = get_session_log_file(session_id)
 
         entry = {
             "timestamp": datetime.now().isoformat(),
@@ -134,7 +142,7 @@ class SessionLogger:
             conversation_id: OpenAI conversation ID (if applicable)
             metadata: Additional metadata
         """
-        session_file = self.sessions_dir / f"session_{session_id}.jsonl"
+        session_file = get_session_log_file(session_id)
 
         entry = {
             "timestamp": datetime.now().isoformat(),
@@ -167,7 +175,7 @@ class SessionLogger:
             output_type: Type of output (e.g., "token", "helper_result", "error")
             content: Output content
         """
-        session_file = self.sessions_dir / f"session_{session_id}.jsonl"
+        session_file = get_session_log_file(session_id)
 
         entry = {
             "timestamp": datetime.now().isoformat(),
@@ -199,7 +207,7 @@ class SessionLogger:
             duration_ms: Duration in milliseconds
             tokens: Token usage stats (input, output, reasoning)
         """
-        session_file = self.sessions_dir / f"session_{session_id}.jsonl"
+        session_file = get_session_log_file(session_id)
 
         entry = {
             "timestamp": datetime.now().isoformat(),
@@ -222,7 +230,7 @@ class SessionLogger:
             session_id: Session ID
             event: Event object
         """
-        session_file = self.sessions_dir / f"session_{session_id}.jsonl"
+        session_file = get_session_log_file(session_id)
 
         entry = {
             "timestamp": datetime.now().isoformat(),
@@ -248,7 +256,7 @@ class SessionLogger:
         Returns:
             List of event dicts
         """
-        session_file = self.sessions_dir / f"session_{session_id}.jsonl"
+        session_file = get_session_log_file(session_id)
 
         if not session_file.exists():
             return []
@@ -272,16 +280,25 @@ class SessionLogger:
         """
         sessions = []
 
-        # Get all session files, sorted by modification time (newest first)
-        for session_file in sorted(
-            self.sessions_dir.glob("session_*.jsonl"),
+        # Get all session directories, sorted by modification time (newest first)
+        if not self.sessions_dir.exists():
+            return []
+
+        session_dirs = [d for d in self.sessions_dir.iterdir() if d.is_dir()]
+
+        for session_dir in sorted(
+            session_dirs,
             key=lambda p: p.stat().st_mtime,
             reverse=True,
         ):
             if len(sessions) >= limit:
                 break
 
-            session_id = session_file.stem.replace("session_", "")
+            session_id = session_dir.name
+            session_file = session_dir / "session.jsonl"
+
+            if not session_file.exists():
+                continue
 
             # Read all entries
             with open(session_file) as f:

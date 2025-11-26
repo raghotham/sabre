@@ -18,16 +18,21 @@ Organization:
 """
 
 import asyncio
+import base64
+import glob
 import os
 import re
 import logging
 import time
 import httpx
 import openai
-from typing import Callable, Awaitable, TYPE_CHECKING
+from pathlib import Path
+from typing import Callable, Awaitable
 from dataclasses import dataclass
 
 from sabre.common.executors.response import ResponseExecutor
+from sabre.common.paths import get_session_files_dir
+from sabre.common.models.messages import ImageContent, TextContent
 from sabre.server.python_runtime import PythonRuntime
 from sabre.server.streaming_parser import StreamingHelperParser
 from sabre.common.execution_context import set_execution_context, clear_execution_context
@@ -45,9 +50,6 @@ from sabre.common import (
     ExecutionNodeType,
     ExecutionStatus,
 )
-
-if TYPE_CHECKING:
-    from sabre.common.models.messages import ImageContent
 
 logger = logging.getLogger(__name__)
 
@@ -618,41 +620,40 @@ class Orchestrator:
             # Process result
             if result.success:
                 # Save images to disk and replace with URLs
-                from sabre.common.models.messages import ImageContent, TextContent
-
                 saved_content = []
                 image_urls = []
 
-                # Calculate user message number by counting existing figure files
-                from sabre.common.paths import get_files_dir
-                import glob
-
-                files_dir = get_files_dir(helper_tree_context["conversation_id"])
+                # Calculate message number by counting existing files for this conversation
+                files_dir = get_session_files_dir(session_id)
                 files_dir.mkdir(parents=True, exist_ok=True)
 
-                # Count existing figure files to get next message number
-                existing_figures = glob.glob(str(files_dir / "figure_*.png"))
-                # Extract message numbers from filenames (figure_1_1_1.png -> 1)
-                message_nums = set()
-                for fig_path in existing_figures:
-                    # Use basename only to avoid splitting on directory path separators
-                    from pathlib import Path
+                conversation_id = helper_tree_context["conversation_id"]
+                # Count existing files for this conversation to determine message number
+                existing_files = glob.glob(str(files_dir / f"file_{conversation_id}_msg*.png"))
 
-                    filename = Path(fig_path).name
-                    parts = filename.split("_")
-                    if len(parts) >= 2 and parts[0] == "figure":
+                # Extract message numbers from filenames (file_{conv_id}_msg1_hlp1_1.png -> 1)
+                message_nums = set()
+                for file_path in existing_files:
+                    filename = Path(file_path).name
+                    # Expected format: file_{conv_id}_msg{msg_num}_hlp{hlp_num}_{img_num}.png
+                    # Find the msg number
+                    if "_msg" in filename:
                         try:
-                            message_nums.add(int(parts[1]))
-                        except ValueError:
+                            msg_part = filename.split("_msg")[1].split("_")[0]
+                            message_nums.add(int(msg_part))
+                        except (ValueError, IndexError):
                             pass
                 message_num = (max(message_nums) + 1) if message_nums else 1
 
                 for item in result.content:
                     if isinstance(item, ImageContent) and item.image_data:
                         # Save image to disk and get URL
-                        # Use message_num for unique filenames: figure_{message_num}_{helper_num}_{image_num}.png
-                        filename = f"figure_{message_num}_{i + 1}_{len(image_urls) + 1}.png"
-                        url = self._save_image_to_disk(item, helper_tree_context["conversation_id"], filename)
+                        # Format: file_{conv_id}_msg{message_num}_hlp{helper_num}_{image_num}.png
+                        # i+1 is helper number, len(image_urls)+1 is image number
+                        filename = f"file_{conversation_id}_msg{message_num}_hlp{i + 1}_{len(image_urls) + 1}.png"
+                        url = self._save_image_to_disk(
+                            item, session_id, helper_tree_context["conversation_id"], filename
+                        )
                         image_urls.append(url)
                         # Keep original base64 ImageContent for Files API upload
                         saved_content.append(item)
@@ -716,8 +717,6 @@ class Orchestrator:
                 # Emit execution end event with results for client display
                 if event_callback:
                     # Build display content: TextContent with output + ImageContent with URLs (not base64)
-                    from sabre.common.models.messages import TextContent, ImageContent
-
                     # Send preview of formatted output (first 500 + last 500 chars)
                     if len(formatted_output) > 1000:
                         output_preview = formatted_output[:500] + "\n\n[...truncated...]\n\n" + formatted_output[-500:]
@@ -767,8 +766,6 @@ class Orchestrator:
 
                 # Emit execution end event with error
                 if event_callback:
-                    from sabre.common.models.messages import TextContent
-
                     await event_callback(
                         HelpersExecutionEndEvent(
                             **helper_tree_context,
@@ -1030,24 +1027,23 @@ class Orchestrator:
     # FILE MANAGEMENT
     # ============================================================
 
-    def _save_image_to_disk(self, image_content: "ImageContent", conversation_id: str, filename: str) -> str:
+    def _save_image_to_disk(
+        self, image_content: ImageContent, session_id: str, conversation_id: str, filename: str
+    ) -> str:
         """
         Save image to disk and return URL.
 
         Args:
             image_content: ImageContent with base64 data
-            conversation_id: Conversation ID for directory organization
-            filename: Filename to save as (e.g., "graph.png")
+            session_id: Session ID for directory organization
+            conversation_id: Conversation ID (included in filename)
+            filename: Filename to save as (e.g., "file_{conv_id}_msg1_hlp1_1.png")
 
         Returns:
             URL path to access the file
         """
-        from sabre.common.paths import get_files_dir
-        import base64
-        import os
-
-        # Create directory: XDG_DATA_HOME/sabre/files/{conversation_id}/
-        files_dir = get_files_dir(conversation_id)
+        # Create directory: ~/.local/state/sabre/logs/sessions/{session_id}/files/
+        files_dir = get_session_files_dir(session_id)
         files_dir.mkdir(parents=True, exist_ok=True)
 
         # Decode and save image
@@ -1055,15 +1051,15 @@ class Orchestrator:
         file_path = files_dir / filename
         file_path.write_bytes(image_bytes)
 
-        # Generate URL (assumes server on localhost:8011 or PORT)
+        # Generate URL using new session-based endpoint
         port = os.getenv("PORT", "8011")
-        url = f"http://localhost:{port}/v1/files/{conversation_id}/{filename}"
+        url = f"http://localhost:{port}/v1/sessions/{session_id}/files/{filename}"
         logger.info(f"💾 Saved image to: {file_path}")
         logger.debug(f"   Accessible at: {url}")
 
         return url
 
-    async def _upload_image_to_files_api(self, image_content: "ImageContent") -> str:
+    async def _upload_image_to_files_api(self, image_content: ImageContent) -> str:
         """
         Upload image to OpenAI Files API and return file_id.
 

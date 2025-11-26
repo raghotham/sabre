@@ -27,7 +27,7 @@ from sabre.common import (
     CancelledEvent,
     ErrorEvent,
 )
-from sabre.common.paths import get_logs_dir, get_files_dir, ensure_dirs, SabrePaths
+from sabre.common.paths import get_logs_dir, get_session_files_dir, ensure_dirs, SabrePaths
 from sabre.server.orchestrator import Orchestrator
 from sabre.server.python_runtime import PythonRuntime
 from sabre.server.api.connector_store import ConnectorStore
@@ -321,13 +321,16 @@ async def health():
     }
 
 
-@app.get("/v1/files/{conversation_id}/{filename}")
-async def serve_file(conversation_id: str, filename: str):
+@app.get("/v1/sessions/{session_id}/files/{filename}")
+async def serve_session_file(session_id: str, filename: str):
     """
-    Serve files generated during conversation (e.g., matplotlib images, saved data).
+    Serve files generated during session (e.g., matplotlib images, saved data).
+
+    Files are organized by session ID, with all files for a session stored in:
+    ~/.local/state/sabre/logs/sessions/{session_id}/files/
 
     Security:
-    - Only serves files from conversation directories
+    - Only serves files from session directories
     - Validates filename is basename only (no path traversal)
     - Returns 404 for non-existent files
     """
@@ -335,8 +338,8 @@ async def serve_file(conversation_id: str, filename: str):
     if os.path.basename(filename) != filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
 
-    # Files are stored in XDG_DATA_HOME/sabre/files/{conversation_id}/
-    files_dir = get_files_dir(conversation_id)
+    # Files are stored in ~/.local/state/sabre/logs/sessions/{session_id}/files/
+    files_dir = get_session_files_dir(session_id)
     file_path = files_dir / filename
 
     if not file_path.exists() or not file_path.is_file():
@@ -364,7 +367,6 @@ async def message_endpoint(request: Request):
         logger.info(f"Generated new session ID: {session_id}")
         # Log session start
         manager.session_logger.log_session_start(session_id, user_message)
-
 
     logger.info(
         f"Received message request: session_id={session_id}, conversation_id={conversation_id}, message={user_message[:50]}..."
