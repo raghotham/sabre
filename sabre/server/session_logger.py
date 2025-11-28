@@ -129,6 +129,7 @@ class SessionLogger:
         node_type: str,
         conversation_id: Optional[str] = None,
         metadata: Optional[dict] = None,
+        system_prompt: Optional[str] = None,
     ):
         """
         Log the start of an execution node.
@@ -141,6 +142,7 @@ class SessionLogger:
             node_type: Type of node (e.g., "response", "helper", "llm_call")
             conversation_id: OpenAI conversation ID (if applicable)
             metadata: Additional metadata
+            system_prompt: System prompt/instructions used (if applicable)
         """
         session_file = get_session_log_file(session_id)
 
@@ -154,6 +156,7 @@ class SessionLogger:
             "node_type": node_type,
             "conversation_id": conversation_id,
             "metadata": metadata or {},
+            "system_prompt": system_prompt,
         }
 
         with open(session_file, "a") as f:

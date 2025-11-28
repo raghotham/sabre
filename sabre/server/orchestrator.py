@@ -204,6 +204,7 @@ class Orchestrator:
                         "iteration": iteration,
                         "model": model or "gpt-4o",
                     },
+                    system_prompt=self.system_instructions if iteration == 1 else None,
                 )
 
             # Emit response_start event
