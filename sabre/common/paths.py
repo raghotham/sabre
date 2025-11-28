@@ -122,6 +122,52 @@ class SabrePaths:
         """Get server PID file path (state)."""
         return SabrePaths.get_state_home() / "logs" / "server.pid"
 
+    # Session-based directory methods
+
+    @staticmethod
+    def get_sessions_base_dir() -> Path:
+        """Get base directory for all sessions (state)."""
+        return SabrePaths.get_logs_dir() / "sessions"
+
+    @staticmethod
+    def get_session_dir(session_id: str) -> Path:
+        """
+        Get session directory containing log and files.
+
+        Args:
+            session_id: Session ID
+
+        Returns:
+            Path to session directory (~/.local/state/sabre/logs/sessions/{session_id})
+        """
+        return SabrePaths.get_sessions_base_dir() / session_id
+
+    @staticmethod
+    def get_session_log_file(session_id: str) -> Path:
+        """
+        Get session log file path.
+
+        Args:
+            session_id: Session ID
+
+        Returns:
+            Path to session.jsonl file
+        """
+        return SabrePaths.get_session_dir(session_id) / "session.jsonl"
+
+    @staticmethod
+    def get_session_files_dir(session_id: str) -> Path:
+        """
+        Get session files directory for generated content.
+
+        Args:
+            session_id: Session ID
+
+        Returns:
+            Path to files directory within session
+        """
+        return SabrePaths.get_session_dir(session_id) / "files"
+
     @staticmethod
     def ensure_dirs():
         """Create all necessary directories if they don't exist."""
@@ -132,6 +178,7 @@ class SabrePaths:
             SabrePaths.get_cache_home(),
             SabrePaths.get_logs_dir(),
             SabrePaths.get_files_dir(),
+            SabrePaths.get_sessions_base_dir(),
         ]
 
         for directory in dirs:
@@ -264,3 +311,23 @@ def migrate_from_old_structure():
 def cleanup_all(force: bool = False) -> dict:
     """Clean up all SABRE directories."""
     return SabrePaths.cleanup_all(force=force)
+
+
+def get_sessions_base_dir() -> Path:
+    """Get base directory for all sessions."""
+    return SabrePaths.get_sessions_base_dir()
+
+
+def get_session_dir(session_id: str) -> Path:
+    """Get session directory."""
+    return SabrePaths.get_session_dir(session_id)
+
+
+def get_session_log_file(session_id: str) -> Path:
+    """Get session log file path."""
+    return SabrePaths.get_session_log_file(session_id)
+
+
+def get_session_files_dir(session_id: str) -> Path:
+    """Get session files directory."""
+    return SabrePaths.get_session_files_dir(session_id)

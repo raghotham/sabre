@@ -27,7 +27,14 @@ from sabre.common import (
     CancelledEvent,
     ErrorEvent,
 )
-from sabre.common.paths import get_logs_dir, get_files_dir, ensure_dirs, SabrePaths
+from sabre.common.paths import (
+    get_logs_dir,
+    get_session_files_dir,
+    get_session_log_file,
+    get_sessions_base_dir,
+    ensure_dirs,
+    SabrePaths,
+)
 from sabre.server.orchestrator import Orchestrator
 from sabre.server.python_runtime import PythonRuntime
 from sabre.server.api.connector_store import ConnectorStore
@@ -304,12 +311,6 @@ app.add_middleware(
 manager = SessionManager()
 
 
-@app.get("/")
-async def root():
-    """API root."""
-    return {"status": "ok", "service": "sabre", "message": "SABRE API - use /v1/ endpoints"}
-
-
 @app.get("/v1/health")
 async def health():
     """Health check with details."""
@@ -321,13 +322,16 @@ async def health():
     }
 
 
-@app.get("/v1/files/{conversation_id}/{filename}")
-async def serve_file(conversation_id: str, filename: str):
+@app.get("/v1/sessions/{session_id}/files/{filename}")
+async def serve_session_file(session_id: str, filename: str):
     """
-    Serve files generated during conversation (e.g., matplotlib images, saved data).
+    Serve files generated during session (e.g., matplotlib images, saved data).
+
+    Files are organized by session ID, with all files for a session stored in:
+    ~/.local/state/sabre/logs/sessions/{session_id}/files/
 
     Security:
-    - Only serves files from conversation directories
+    - Only serves files from session directories
     - Validates filename is basename only (no path traversal)
     - Returns 404 for non-existent files
     """
@@ -335,14 +339,129 @@ async def serve_file(conversation_id: str, filename: str):
     if os.path.basename(filename) != filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
 
-    # Files are stored in XDG_DATA_HOME/sabre/files/{conversation_id}/
-    files_dir = get_files_dir(conversation_id)
+    # Files are stored in ~/.local/state/sabre/logs/sessions/{session_id}/files/
+    files_dir = get_session_files_dir(session_id)
     file_path = files_dir / filename
 
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
 
     return FileResponse(file_path)
+
+
+@app.get("/v1/sessions")
+async def list_sessions():
+    """
+    List all available sessions.
+
+    Returns:
+        List of session summaries with metadata
+    """
+    sessions = manager.session_logger.list_sessions(limit=100)
+    return {"sessions": sessions}
+
+
+@app.get("/v1/sessions/{session_id}")
+async def get_session_data(session_id: str):
+    """
+    Get session log data (session.jsonl).
+
+    Returns JSONL file as plain text that can be parsed line-by-line.
+
+    Security:
+    - Only serves session.jsonl from session directories
+    - Returns 404 for non-existent sessions
+    """
+    session_file = get_session_log_file(session_id)
+
+    if not session_file.exists() or not session_file.is_file():
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    return FileResponse(session_file, media_type="application/x-ndjson")
+
+
+@app.get("/v1/sessions/{session_id}/files")
+async def list_session_files(session_id: str):
+    """
+    List all files in a session's files directory.
+
+    Returns:
+        JSON array of filenames with metadata
+    """
+
+    files_dir = get_sessions_base_dir() / session_id / "files"
+
+    if not files_dir.exists():
+        return {"files": []}
+
+    files = []
+    for file_path in files_dir.iterdir():
+        if file_path.is_file():
+            # Determine file type
+            suffix = file_path.suffix.lower()
+            file_type = "image" if suffix in [".png", ".jpg", ".jpeg", ".gif", ".webp"] else "other"
+
+            files.append(
+                {
+                    "filename": file_path.name,
+                    "type": file_type,
+                    "size": file_path.stat().st_size,
+                }
+            )
+
+    return {"files": files}
+
+
+@app.get("/v1/sessions/{session_id}/files/{filename}")
+async def get_session_file(session_id: str, filename: str):
+    """
+    Get a file from a session's files directory (e.g., screenshots, images).
+
+    Security:
+    - Only serves files from session's files directory
+    - Returns 404 for non-existent files or directory traversal attempts
+    """
+
+    # Sanitize filename to prevent directory traversal
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    # Construct file path
+    files_dir = get_sessions_base_dir() / session_id / "files"
+    file_path = files_dir / filename
+
+    # Verify file exists and is within the files directory
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    if not str(file_path).startswith(str(files_dir)):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Determine media type based on extension
+    if filename.endswith(".png"):
+        media_type = "image/png"
+    elif filename.endswith(".jpg") or filename.endswith(".jpeg"):
+        media_type = "image/jpeg"
+    else:
+        media_type = "application/octet-stream"
+
+    return FileResponse(file_path, media_type=media_type)
+
+
+@app.get("/")
+async def serve_session_viewer():
+    """
+    Serve the session viewer HTML page at root path.
+    """
+    from pathlib import Path
+
+    # Find session_viewer.html in the sabre/ui directory
+    viewer_path = Path(__file__).parent.parent.parent / "ui" / "session_viewer.html"
+
+    if not viewer_path.exists():
+        raise HTTPException(status_code=404, detail="Session viewer not found")
+
+    return FileResponse(viewer_path, media_type="text/html")
 
 
 @app.post("/v1/message")
@@ -364,7 +483,6 @@ async def message_endpoint(request: Request):
         logger.info(f"Generated new session ID: {session_id}")
         # Log session start
         manager.session_logger.log_session_start(session_id, user_message)
-
 
     logger.info(
         f"Received message request: session_id={session_id}, conversation_id={conversation_id}, message={user_message[:50]}..."
