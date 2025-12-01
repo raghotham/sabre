@@ -173,7 +173,12 @@ class LLMCall:
         for i, expr in enumerate(expr_list):
             if isinstance(expr, ImageContent):
                 # Don't embed base64 in text - collect for structured attachment
-                context_parts.append(f"### Context {i + 1} (Image)\n[Image {i + 1}]")
+                # Make it clear to the model that an actual image is attached
+                context_parts.append(
+                    f"### Context {i + 1} (Image Attachment)\n"
+                    f"An image has been attached to this message as part of the input. "
+                    f"You can view and analyze this image directly - it is available for visual inspection."
+                )
                 image_attachments.append(expr)
                 logger.info(
                     f"  📷 Collected ImageContent {i + 1}: "
@@ -216,11 +221,20 @@ class LLMCall:
             from sabre.server.python_runtime import PythonRuntime
             from sabre.common.executors.response import ResponseExecutor
 
+            # Get session logger from parent orchestrator if available
+            parent_orchestrator = self.get_orchestrator()
+            session_logger = parent_orchestrator.session_logger if parent_orchestrator else None
+
             # Create new executor, runtime, and orchestrator for this nested call
             # ResponseExecutor reads OPENAI_API_KEY and other config from env
             executor = ResponseExecutor()
             runtime = PythonRuntime()
-            orchestrator = Orchestrator(executor=executor, python_runtime=runtime, max_iterations=10)
+            orchestrator = Orchestrator(
+                executor=executor,
+                python_runtime=runtime,
+                session_logger=session_logger,  # Pass parent's session logger
+                max_iterations=10,
+            )
 
             # Connect runtime to orchestrator (for recursive llm_call support)
             runtime.set_orchestrator(orchestrator)
