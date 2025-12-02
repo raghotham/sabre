@@ -55,7 +55,7 @@ async def test_orchestrator_no_helpers():
     )
     orchestrator._ensure_images_uploaded = AsyncMock(side_effect=lambda x: x)
 
-    result = await orchestrator.run(conversation_id="conv_123", input_text="Hello", tree=tree)
+    result = await orchestrator.run(conversation_id="conv_123", input_text="Hello", tree=tree, session_id="session_123")
 
     assert result.success
     assert result.final_response == "This is a plain response"
@@ -87,7 +87,7 @@ async def test_orchestrator_with_helpers():
     orchestrator._execute_helpers = AsyncMock(return_value=[("Computed result: 4", [])])
     orchestrator._ensure_images_uploaded = AsyncMock(side_effect=lambda x: x)
 
-    result = await orchestrator.run(conversation_id="conv_123", input_text="What is 2 + 2?", tree=tree)
+    result = await orchestrator.run(conversation_id="conv_123", input_text="What is 2 + 2?", tree=tree, session_id="session_123")
 
     assert result.success
     assert result.final_response == "The result is 4"
@@ -112,7 +112,7 @@ async def test_orchestrator_max_iterations():
     orchestrator._execute_helpers = AsyncMock(return_value=[("loop", [])])
     orchestrator._ensure_images_uploaded = AsyncMock(side_effect=lambda x: x)
 
-    result = await orchestrator.run(conversation_id="conv_123", input_text="Test", tree=tree)
+    result = await orchestrator.run(conversation_id="conv_123", input_text="Test", tree=tree, session_id="session_123")
 
     assert not result.success
     assert "Max iterations" in result.error

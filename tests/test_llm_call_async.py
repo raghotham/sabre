@@ -29,6 +29,7 @@ async def test_run_async_from_sync_uses_orchestrator_loop():
             tree=None,
             tree_context={},
             conversation_id="conv-test",
+            session_id="session-test",
             loop=orchestrator_loop,
         )
         try:

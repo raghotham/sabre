@@ -69,6 +69,10 @@ class SessionLogger:
             depth: Tree depth
             message: User message content
         """
+        # Ensure session directory exists
+        session_dir = get_session_dir(session_id)
+        session_dir.mkdir(parents=True, exist_ok=True)
+
         session_file = get_session_log_file(session_id)
 
         entry = {
