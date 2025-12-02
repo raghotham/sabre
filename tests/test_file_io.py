@@ -17,7 +17,7 @@ def test_write_read_text_file():
 
     # Set up context
     test_conv_id = "test-conv-text-file"
-    set_execution_context(event_callback=None, tree=None, tree_context={}, conversation_id=test_conv_id)
+    set_execution_context(event_callback=None, tree=None, tree_context={}, conversation_id=test_conv_id, session_id=test_conv_id)
 
     try:
         # Write text file
@@ -48,7 +48,7 @@ def test_write_read_json_file():
     print("\n=== Test: Write and Read JSON File ===")
 
     test_conv_id = "test-conv-json"
-    set_execution_context(None, None, {}, test_conv_id)
+    set_execution_context(None, None, {}, test_conv_id, test_conv_id)
 
     try:
         # Write JSON
@@ -79,7 +79,7 @@ def test_write_read_image():
     print("\n=== Test: Write and Read Image ===")
 
     test_conv_id = "test-conv-image"
-    set_execution_context(None, None, {}, test_conv_id)
+    set_execution_context(None, None, {}, test_conv_id, test_conv_id)
 
     try:
         # Create test image (minimal PNG header)
@@ -113,7 +113,7 @@ def test_security_no_path_traversal():
     print("\n=== Test: Security - Path Traversal Prevention ===")
 
     test_conv_id = "test-conv-security"
-    set_execution_context(None, None, {}, test_conv_id)
+    set_execution_context(None, None, {}, test_conv_id, test_conv_id)
 
     try:
         # Try to write with path separator
@@ -140,7 +140,7 @@ def test_read_absolute_path():
     print("\n=== Test: Read from Absolute Path ===")
 
     test_conv_id = "test-conv-absolute"
-    set_execution_context(None, None, {}, test_conv_id)
+    set_execution_context(None, None, {}, test_conv_id, test_conv_id)
 
     try:
         # Create temp file
