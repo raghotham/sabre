@@ -46,25 +46,30 @@ This separation ensures the LLM always knows *what* is available without paying 
 
 ## Directory Structure
 
-Each persona lives in its own directory under `~/.config/sabre/personas/`. This structure provides:
+Each persona lives in its own directory under `sabre/server/personas/`. This structure provides:
 
 - **Modularity**: Each persona is self-contained and can be versioned independently
-- **Extensibility**: Users can add custom personas without modifying SABRE core
 - **Organization**: Workflows are grouped logically within each persona
 - **Discoverability**: Standard file names make it easy to find and edit persona definitions
 
 ```
-~/.config/sabre/personas/kubernetes-sre/
-├── PERSONA.md              # Identity + indices
-├── helpers.yaml            # Categories + filters
-└── workflows/
-    ├── incident-response.md
-    ├── debugging.md
-    ├── deployment.md
-    ├── scaling.md
-    ├── fix-crashloop.md
-    ├── fix-oom-killed.md
-    └── fix-high-cpu.md
+sabre/server/personas/
+├── general/
+│   ├── PERSONA.md
+│   ├── helpers.yaml
+│   └── workflows/
+├── kubernetes-sre/
+│   ├── PERSONA.md              # Identity + indices
+│   ├── helpers.yaml            # Categories + filters
+│   └── workflows/
+│       ├── incident-response.md
+│       ├── debugging.md
+│       ├── deployment.md
+│       ├── scaling.md
+│       ├── fix-crashloop.md
+│       ├── fix-oom-killed.md
+│       └── fix-high-cpu.md
+└── ...
 ```
 
 **PERSONA.md**: The main persona definition file containing YAML frontmatter (metadata, workflow index, helper filters) and markdown body (identity, principles, guidelines).
