@@ -290,6 +290,7 @@ async def _stream_chat_completion(manager, user_input: str, completion_id: str, 
                 conversation_id=None,  # Always new conversation for benchmarks
                 input_text=user_input,
                 tree=tree,
+                session_id=completion_id,  # Use completion_id as session_id
                 instructions=instructions,
                 event_callback=event_callback,
             )
