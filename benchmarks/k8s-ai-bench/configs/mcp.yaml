@@ -1,0 +1,20 @@
+# SABRE MCP Server Configuration for kubectl-ai
+#
+# Copy this file to ~/.config/sabre/mcp.yaml
+#
+# This configuration enables kubectl-ai as an MCP server, which provides:
+#   - kubectl_ai.kubectl - Execute kubectl commands against the cluster
+#   - kubectl_ai.bash - Execute bash commands
+#
+# Usage:
+#   1. Copy to ~/.config/sabre/mcp.yaml
+#   2. Restart SABRE server: uv run sabre --stop && uv run sabre-server
+#   3. Verify tools are available: uv run sabre list
+#
+mcp_servers:
+  kubectl-ai:
+    type: stdio
+    command: kubectl-ai
+    args: ["--mcp-server"]
+    enabled: true
+    timeout: 60

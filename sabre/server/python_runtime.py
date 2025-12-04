@@ -163,13 +163,16 @@ class PythonRuntime:
 
             # Group tools by server to create namespace objects
             # e.g., remote_test.echo becomes remote_test object with echo attribute
+            # Hyphens are replaced with underscores to create valid Python identifiers
             servers = {}
             for tool_name, tool_func in mcp_tools.items():
                 if "." in tool_name:
                     server_name, method_name = tool_name.split(".", 1)
-                    if server_name not in servers:
-                        servers[server_name] = type(server_name, (), {})()
-                    setattr(servers[server_name], method_name, tool_func)
+                    # Sanitize server name: replace hyphens with underscores for valid Python identifiers
+                    safe_server_name = server_name.replace("-", "_")
+                    if safe_server_name not in servers:
+                        servers[safe_server_name] = type(safe_server_name, (), {})()
+                    setattr(servers[safe_server_name], method_name, tool_func)
                 else:
                     # Flat tool name (no server prefix)
                     self.namespace[tool_name] = tool_func

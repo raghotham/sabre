@@ -96,10 +96,15 @@ async def test_refresh_tools(mock_manager, sample_tools):
     await adapter.refresh_tools()
 
     # Should have 3 tools total (2 from test-server, 1 from another-server)
+    # Note: server names with hyphens are sanitized to underscores for valid Python identifiers
     assert len(adapter._tools_cache) == 3
-    assert "test-server.query" in adapter._tools_cache
-    assert "test-server.execute" in adapter._tools_cache
-    assert "another-server.create_file" in adapter._tools_cache
+    assert "test_server.query" in adapter._tools_cache
+    assert "test_server.execute" in adapter._tools_cache
+    assert "another_server.create_file" in adapter._tools_cache
+
+    # Verify sanitized name mapping is created
+    assert adapter._sanitized_to_original.get("test_server") == "test-server"
+    assert adapter._sanitized_to_original.get("another_server") == "another-server"
 
     print(f"✓ Refreshed {len(adapter._tools_cache)} tools")
 
@@ -114,10 +119,11 @@ async def test_get_available_tools(mock_manager, sample_tools):
 
     tools = adapter.get_available_tools()
 
+    # Note: server names with hyphens are sanitized to underscores for valid Python identifiers
     assert len(tools) == 3
-    assert callable(tools["test-server.query"])
-    assert callable(tools["test-server.execute"])
-    assert callable(tools["another-server.create_file"])
+    assert callable(tools["test_server.query"])
+    assert callable(tools["test_server.execute"])
+    assert callable(tools["another_server.create_file"])
 
     print(f"✓ Got {len(tools)} callable tools")
 
@@ -131,9 +137,10 @@ async def test_tool_callable_metadata(mock_manager, sample_tools):
     await adapter.refresh_tools()
 
     tools = adapter.get_available_tools()
-    query_tool = tools["test-server.query"]
+    # Note: server names with hyphens are sanitized to underscores for valid Python identifiers
+    query_tool = tools["test_server.query"]
 
-    assert query_tool.__name__ == "test-server.query"
+    assert query_tool.__name__ == "test_server.query"
     assert query_tool.__doc__ == "Execute a query"
 
     print("✓ Tool callable metadata correct")
@@ -149,13 +156,14 @@ async def test_generate_documentation(mock_manager, sample_tools):
 
     docs = adapter.generate_documentation()
 
-    # Should contain markdown sections for each server
+    # Should contain markdown sections for each server (with sanitized names)
+    # Note: server names with hyphens are sanitized to underscores for valid Python identifiers
     assert "## MCP Tools" in docs
-    assert "### test-server Server" in docs
-    assert "### another-server Server" in docs
+    assert "### test_server Server" in docs
+    assert "### another_server Server" in docs
 
-    # Should contain tool signatures
-    assert "test-server.query" in docs
+    # Should contain tool signatures with sanitized server names
+    assert "test_server.query" in docs
     assert "Execute a query" in docs
     assert "sql: str" in docs
 
@@ -268,7 +276,7 @@ async def test_invoke_tool_success(mock_manager, sample_tools):
     """Test successful tool invocation."""
     mock_manager.get_all_tools.return_value = sample_tools
 
-    # Mock name_to_id mapping
+    # Mock name_to_id mapping - uses original server name (with hyphen)
     mock_manager.name_to_id = {"test-server": "uuid-123"}
 
     # Mock client and tool call
@@ -282,13 +290,15 @@ async def test_invoke_tool_success(mock_manager, sample_tools):
     adapter = MCPHelperAdapter(mock_manager)
     await adapter.refresh_tools()
 
-    result = await adapter.invoke_tool("test-server.query", sql="SELECT * FROM users")
+    # Use sanitized name (underscore) when invoking - adapter maps back to original
+    result = await adapter.invoke_tool("test_server.query", sql="SELECT * FROM users")
 
     assert len(result) == 1
     assert isinstance(result[0], TextContent)
     assert result[0].text == "Success!"
 
-    # Verify correct tool was called
+    # Verify correct tool was called - should use original server name for client lookup
+    mock_manager.get_client_by_name.assert_called_with("test-server")
     mock_client.call_tool.assert_called_once_with("query", {"sql": "SELECT * FROM users"})
 
     print("✓ Tool invocation works correctly")
@@ -317,9 +327,10 @@ async def test_get_server_names(mock_manager, sample_tools):
     await adapter.refresh_tools()
 
     servers = adapter.get_server_names()
+    # Note: server names with hyphens are sanitized to underscores for valid Python identifiers
     assert len(servers) == 2
-    assert "test-server" in servers
-    assert "another-server" in servers
+    assert "test_server" in servers
+    assert "another_server" in servers
 
     print(f"✓ Server names: {servers}")
 
@@ -332,7 +343,8 @@ async def test_has_tool(mock_manager, sample_tools):
     adapter = MCPHelperAdapter(mock_manager)
     await adapter.refresh_tools()
 
-    assert adapter.has_tool("test-server.query") is True
+    # Note: server names with hyphens are sanitized to underscores for valid Python identifiers
+    assert adapter.has_tool("test_server.query") is True
     assert adapter.has_tool("nonexistent.tool") is False
 
     print("✓ has_tool works correctly")
@@ -346,9 +358,11 @@ async def test_get_tool(mock_manager, sample_tools):
     adapter = MCPHelperAdapter(mock_manager)
     await adapter.refresh_tools()
 
-    tool = adapter.get_tool("test-server.query")
+    # Note: use sanitized server name (underscores) to look up tool
+    tool = adapter.get_tool("test_server.query")
     assert tool is not None
     assert tool.name == "query"
+    # Note: the original server_name in the MCPTool is still "test-server"
     assert tool.server_name == "test-server"
 
     nonexistent = adapter.get_tool("nonexistent.tool")
