@@ -21,6 +21,21 @@ from .client_manager import MCPClientManager
 logger = logging.getLogger(__name__)
 
 
+def sanitize_name(name: str) -> str:
+    """
+    Sanitize a server name to be a valid Python identifier.
+
+    Replaces hyphens with underscores since Python identifiers cannot contain hyphens.
+
+    Args:
+        name: Original server name (e.g., "kubectl-ai")
+
+    Returns:
+        Sanitized name (e.g., "kubectl_ai")
+    """
+    return name.replace("-", "_")
+
+
 class MCPHelperAdapter:
     """
     Adapter that exposes MCP tools as SABRE helpers.
@@ -43,6 +58,8 @@ class MCPHelperAdapter:
         self.client_manager = client_manager
         self._tools_cache: dict[str, MCPTool] = {}
         self._main_loop = event_loop  # Store reference to main event loop for thread-safe calls
+        # Mapping from sanitized server names to original names (e.g., "kubectl_ai" -> "kubectl-ai")
+        self._sanitized_to_original: dict[str, str] = {}
 
     async def refresh_tools(self) -> None:
         """
@@ -51,13 +68,22 @@ class MCPHelperAdapter:
         This should be called after connecting to servers or when tools might have changed.
         """
         self._tools_cache.clear()
+        self._sanitized_to_original.clear()
 
         all_tools = await self.client_manager.get_all_tools()
 
         for server_name, tools in all_tools.items():
+            # Sanitize server name for valid Python identifier
+            safe_server_name = sanitize_name(server_name)
+
+            # Store mapping from sanitized to original name
+            if safe_server_name != server_name:
+                self._sanitized_to_original[safe_server_name] = server_name
+                logger.debug(f"Server name sanitized: {server_name} -> {safe_server_name}")
+
             for tool in tools:
-                # Create qualified tool name: ServerName.tool_name
-                qualified_name = f"{server_name}.{tool.name}"
+                # Create qualified tool name with sanitized server name: ServerName.tool_name
+                qualified_name = f"{safe_server_name}.{tool.name}"
                 self._tools_cache[qualified_name] = tool
                 logger.debug(f"Registered MCP tool: {qualified_name}")
 
@@ -182,7 +208,7 @@ class MCPHelperAdapter:
         Invoke an MCP tool and return SABRE Content.
 
         Args:
-            qualified_name: Qualified tool name (ServerName.tool_name)
+            qualified_name: Qualified tool name (ServerName.tool_name) - uses sanitized server name
             **kwargs: Tool arguments
 
         Returns:
@@ -196,13 +222,16 @@ class MCPHelperAdapter:
         if "." not in qualified_name:
             raise ValueError(f"Tool name must be qualified with server name: {qualified_name}")
 
-        server_name, tool_name = qualified_name.split(".", 1)
+        sanitized_server_name, tool_name = qualified_name.split(".", 1)
+
+        # Map sanitized server name back to original name if needed
+        original_server_name = self._sanitized_to_original.get(sanitized_server_name, sanitized_server_name)
 
         # Get client for server (check if server name exists in name_to_id mapping)
-        if server_name not in self.client_manager.name_to_id:
-            raise MCPServerNotFoundError(server_name)
+        if original_server_name not in self.client_manager.name_to_id:
+            raise MCPServerNotFoundError(original_server_name)
 
-        client = self.client_manager.get_client_by_name(server_name)
+        client = self.client_manager.get_client_by_name(original_server_name)
 
         # Call tool via MCP client
         logger.info(f"Invoking MCP tool: {qualified_name} with args: {kwargs}")
@@ -307,6 +336,7 @@ class MCPHelperAdapter:
         Generate documentation for all MCP tools.
 
         This is included in the system prompt to inform the LLM about available tools.
+        Server names are sanitized to be valid Python identifiers.
 
         Returns:
             Markdown-formatted documentation string
@@ -314,21 +344,22 @@ class MCPHelperAdapter:
         if not self._tools_cache:
             return ""
 
-        # Group tools by server
+        # Group tools by sanitized server name (extract from qualified_name)
         servers = {}
         for qualified_name, tool in self._tools_cache.items():
-            server_name = tool.server_name
-            if server_name not in servers:
-                servers[server_name] = []
-            servers[server_name].append((qualified_name, tool))
+            # Extract sanitized server name from qualified_name (e.g., "kubectl_ai.tool" -> "kubectl_ai")
+            sanitized_server_name = qualified_name.split(".", 1)[0]
+            if sanitized_server_name not in servers:
+                servers[sanitized_server_name] = []
+            servers[sanitized_server_name].append((qualified_name, tool))
 
         # Generate markdown documentation
         doc_lines = ["## MCP Tools", ""]
         doc_lines.append("The following tools are available from connected MCP servers:")
         doc_lines.append("")
 
-        for server_name, tools in sorted(servers.items()):
-            doc_lines.append(f"### {server_name} Server")
+        for sanitized_server_name, tools in sorted(servers.items()):
+            doc_lines.append(f"### {sanitized_server_name} Server")
             doc_lines.append("")
 
             for qualified_name, tool in tools:
@@ -348,10 +379,12 @@ class MCPHelperAdapter:
         return len(self._tools_cache)
 
     def get_server_names(self) -> list[str]:
-        """Get list of servers that have tools registered"""
+        """Get list of servers that have tools registered (using sanitized names)"""
         servers = set()
-        for tool in self._tools_cache.values():
-            servers.add(tool.server_name)
+        for qualified_name in self._tools_cache.keys():
+            # Extract sanitized server name from qualified_name
+            sanitized_server_name = qualified_name.split(".", 1)[0]
+            servers.add(sanitized_server_name)
         return sorted(servers)
 
     def has_tool(self, qualified_name: str) -> bool:
