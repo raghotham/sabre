@@ -23,7 +23,7 @@ from sabre.common import (
     Event,
     EventType,
 )
-from sabre.common.models.events import ResponseTextEvent, ErrorEvent
+from sabre.common.models.events import ResponseTextEvent, ErrorEvent, CompleteEvent
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +219,7 @@ async def _complete_chat_completion(
             conversation_id=None,  # Always new conversation for benchmarks
             input_text=user_input,
             tree=tree,
+            session_id=completion_id,  # Use completion_id as session_id
             instructions=instructions,
             event_callback=event_callback,
         )
@@ -307,13 +308,28 @@ async def _stream_chat_completion(manager, user_input: str, completion_id: str, 
     # Start orchestration task
     task = asyncio.create_task(run_orchestration())
 
+    final_response_text = ""
+
     try:
         # Stream events as OpenAI chunks
         while True:
             event = await event_queue.get()
 
             if event is None:
-                # Task completed - send final chunk
+                # Task completed - send final response if we haven't sent anything yet
+                if not response_started and final_response_text:
+                    chunk = {
+                        "id": completion_id,
+                        "object": "chat.completion.chunk",
+                        "created": created,
+                        "model": model_name,
+                        "choices": [
+                            {"index": 0, "delta": {"role": "assistant", "content": final_response_text}, "finish_reason": None}
+                        ],
+                    }
+                    yield f"data: {json.dumps(chunk)}\n\n"
+
+                # Send final done chunk
                 chunk = {
                     "id": completion_id,
                     "object": "chat.completion.chunk",
@@ -325,24 +341,28 @@ async def _stream_chat_completion(manager, user_input: str, completion_id: str, 
                 yield "data: [DONE]\n\n"
                 break
 
-            # Only stream final response text
-            if event.type == EventType.RESPONSE_TEXT and isinstance(event, ResponseTextEvent):
-                text = event.data.get("text", "")
-
-                # Send chunk with full text (OpenAI sends incremental deltas,
-                # but for simplicity we send the full text once)
-                if not response_started:
+            # Capture CompleteEvent - this has the final response
+            if event.type == EventType.COMPLETE and isinstance(event, CompleteEvent):
+                final_response_text = event.data.get("final_message", "")
+                if final_response_text and not response_started:
                     chunk = {
                         "id": completion_id,
                         "object": "chat.completion.chunk",
                         "created": created,
                         "model": model_name,
                         "choices": [
-                            {"index": 0, "delta": {"role": "assistant", "content": text}, "finish_reason": None}
+                            {"index": 0, "delta": {"role": "assistant", "content": final_response_text}, "finish_reason": None}
                         ],
                     }
                     yield f"data: {json.dumps(chunk)}\n\n"
                     response_started = True
+
+            # Also capture intermediate ResponseTextEvents (for streaming progress)
+            elif event.type == EventType.RESPONSE_TEXT and isinstance(event, ResponseTextEvent):
+                text = event.data.get("text", "")
+                # Store the latest response text in case CompleteEvent doesn't fire
+                if text:
+                    final_response_text = text
 
             # Handle errors
             elif event.type == EventType.ERROR and isinstance(event, ErrorEvent):
