@@ -269,12 +269,12 @@ async def lifespan(app: FastAPI):
     )
     logger.info("Starting sabre server...")
 
-    # Check Playwright installation
+    # Check Playwright installation (optional - Web helper won't work without it)
     try:
         await check_playwright_installation()
     except RuntimeError as e:
-        logger.error(f"Playwright check failed: {e}")
-        raise
+        logger.warning(f"Playwright not installed: {e}")
+        logger.info("Server starting without Web helper browser automation")
 
     # Connect to MCP servers
     try:
