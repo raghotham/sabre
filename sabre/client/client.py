@@ -441,16 +441,18 @@ class Client:
         """Run client in non-interactive mode with a single message"""
         try:
             async with httpx.AsyncClient() as client:
-                # Show user message
+                # Show user message (escape HTML to prevent parsing errors)
                 user_color = self.tui.colors["user_input"]
-                self.tui.print(f'<style fg="{user_color}">&gt; {message}</style>')
+                escaped_message = self.tui.html_escape(message)
+                self.tui.print(f'<style fg="{user_color}">&gt; {escaped_message}</style>')
                 self.tui.print()
 
                 # Send message
                 await self.send_message(client, message)
 
         except Exception as e:
-            self.tui.print(f'<style fg="ansired">Error:</style> {e}')
+            escaped_error = self.tui.html_escape(str(e))
+            self.tui.print(f'<style fg="ansired">Error:</style> {escaped_error}')
             logger.error(f"Error in run_once: {e}", exc_info=True)
             return 1
 
