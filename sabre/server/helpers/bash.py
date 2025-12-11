@@ -92,13 +92,13 @@ class Bash:
 
         Args:
             command: Bash command to execute
-            timeout: Timeout in milliseconds (default 10000)
+            timeout: Timeout in milliseconds (default 300000 = 5 minutes)
             quiet: If True, don't print output (default False)
 
         Returns:
             BashResult with stdout, stderr, exit_code
         """
-        timeout = timeout if timeout is not None else 10000
+        timeout = timeout if timeout is not None else 300000  # 5 minutes default
         result = execute_bash(command, timeout=timeout)
 
         # Auto-print output so LLM sees it in helpers_result
