@@ -232,11 +232,21 @@ def cleanup(force: bool = False):
         return 1
 
 
-async def run_client():
-    """Run the client"""
+async def run_client(message: str | None = None):
+    """Run the client, optionally with a single message (script mode)"""
     from sabre.client.client import main
 
-    return await main()
+    # If message provided, set sys.argv for the client to pick up
+    if message:
+        import sys
+        original_argv = sys.argv.copy()
+        sys.argv = [sys.argv[0], message]
+        try:
+            return await main()
+        finally:
+            sys.argv = original_argv
+    else:
+        return await main()
 
 
 def mcp_list():
@@ -317,8 +327,8 @@ def main():
     parser.add_argument("--clean", action="store_true", help="Clean up all SABRE XDG directories")
     parser.add_argument("--force", action="store_true", help="Skip confirmation prompt (for --clean)")
 
-    # MCP subcommand
-    parser.add_argument("mcp_command", nargs="?", help="MCP subcommand (list, init, config)")
+    # Positional argument can be either MCP subcommand or a message for script mode
+    parser.add_argument("command_or_message", nargs="?", help="MCP subcommand (list, init, config) or message for script mode")
 
     args = parser.parse_args()
 
@@ -330,28 +340,27 @@ def main():
     if args.stop:
         return stop_server()
 
-    # Handle MCP commands
-    if args.mcp_command:
-        if args.mcp_command == "list":
+    # Handle MCP commands (only if it's a known command)
+    mcp_commands = {"list", "init", "config"}
+    if args.command_or_message and args.command_or_message in mcp_commands:
+        if args.command_or_message == "list":
             return mcp_list()
-        elif args.mcp_command == "init":
+        elif args.command_or_message == "init":
             return mcp_init(force=args.force)
-        elif args.mcp_command == "config":
+        elif args.command_or_message == "config":
             return mcp_config()
-        else:
-            print(f"Unknown MCP command: {args.mcp_command}", file=sys.stderr)
-            print("Available commands: list, init, config", file=sys.stderr)
-            return 1
 
     # Normal operation: start server and run client
+    # If command_or_message is provided and not an MCP command, it's a message for script mode
+    message = args.command_or_message if args.command_or_message and args.command_or_message not in mcp_commands else None
     server_process = None
 
     try:
         # Start server
         server_process = start_server()
 
-        # Run client
-        exit_code = asyncio.run(run_client())
+        # Run client (with optional message for script mode)
+        exit_code = asyncio.run(run_client(message))
 
         return exit_code
 
