@@ -1,0 +1,70 @@
+#!/bin/bash
+#
+# Install SABRE in a Harbor container environment
+#
+# This script:
+# 1. Installs system dependencies (curl, git)
+# 2. Installs uv (Python package manager)
+# 3. Clones SABRE repository
+# 4. Installs SABRE dependencies
+# 5. Verifies installation
+#
+# Template variables:
+#   - version: Git branch/tag/commit to checkout (default: main)
+#   - repo_url: SABRE repository URL
+#
+
+set -e
+
+echo "=== Installing SABRE Agent ==="
+
+# Update package lists and install dependencies
+echo "Installing system dependencies..."
+apt-get update
+apt-get install -y curl git
+
+# Install uv (Python package manager)
+echo "Installing uv..."
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Add uv to PATH for this session
+export PATH="$HOME/.local/bin:$PATH"
+
+# Verify uv installation
+echo "Verifying uv installation..."
+~/.local/bin/uv --version
+
+# Clone SABRE repository
+echo "Cloning SABRE repository..."
+cd ~
+if [ -d "sabre" ]; then
+    echo "SABRE directory exists, removing..."
+    rm -rf sabre
+fi
+
+# Shallow clone for faster download
+{% if version and version != "latest" %}
+echo "Cloning branch: {{ version }}"
+git clone --depth 1 --branch {{ version }} {{ repo_url }} sabre
+{% else %}
+echo "Cloning default branch (main)"
+git clone --depth 1 {{ repo_url }} sabre
+{% endif %}
+cd sabre
+
+# Install SABRE dependencies (production only, skip dev deps for speed)
+# Increase timeout for large packages like playwright (44MB)
+echo "Installing SABRE dependencies..."
+UV_HTTP_TIMEOUT=300 ~/.local/bin/uv sync --no-dev --frozen
+
+# Verify SABRE installation
+echo "Verifying SABRE installation..."
+~/.local/bin/uv run python -c "import sabre; print('SABRE imported successfully')"
+
+# Test SABRE CLI (should show help)
+echo "Testing SABRE CLI..."
+~/.local/bin/uv run sabre --help || echo "Note: --help may not be implemented"
+
+echo "=== SABRE Installation Complete ==="
+echo "SABRE is installed at: ~/sabre"
+echo "Run with: cd ~/sabre && uv run sabre 'your message'"
