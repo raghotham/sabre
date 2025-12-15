@@ -232,11 +232,11 @@ def cleanup(force: bool = False):
         return 1
 
 
-async def run_client():
-    """Run the client"""
+async def run_client(message: str | None = None):
+    """Run the client, optionally with a single message (script mode)"""
     from sabre.client.client import main
 
-    return await main()
+    return await main(message)
 
 
 def mcp_list():
@@ -312,13 +312,37 @@ def mcp_config():
 
 def main():
     """Main entry point"""
-    parser = argparse.ArgumentParser(description="SABRE CLI")
+    parser = argparse.ArgumentParser(
+        description="SABRE - Persona-driven AI agent",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  sabre                    # Start interactive client
+  sabre --message "task"   # Run single task (script mode)
+  sabre mcp list           # List MCP servers
+  sabre mcp init           # Initialize MCP config
+  sabre --stop             # Stop server
+  sabre --clean            # Clean up data
+        """,
+    )
+
+    # Script mode
+    parser.add_argument("-m", "--message", type=str, help="Run single message in script mode (non-interactive)")
+
+    # Server management
     parser.add_argument("--stop", action="store_true", help="Stop the running server")
     parser.add_argument("--clean", action="store_true", help="Clean up all SABRE XDG directories")
     parser.add_argument("--force", action="store_true", help="Skip confirmation prompt (for --clean)")
 
-    # MCP subcommand
-    parser.add_argument("mcp_command", nargs="?", help="MCP subcommand (list, init, config)")
+    # MCP subcommands
+    subparsers = parser.add_subparsers(dest="subcommand", help="Subcommands")
+
+    # MCP command group
+    mcp_parser = subparsers.add_parser("mcp", help="MCP server management")
+    mcp_subparsers = mcp_parser.add_subparsers(dest="mcp_command", help="MCP commands")
+    mcp_subparsers.add_parser("list", help="List configured MCP servers")
+    mcp_subparsers.add_parser("init", help="Create example MCP configuration")
+    mcp_subparsers.add_parser("config", help="Show MCP config file path")
 
     args = parser.parse_args()
 
@@ -330,8 +354,8 @@ def main():
     if args.stop:
         return stop_server()
 
-    # Handle MCP commands
-    if args.mcp_command:
+    # Handle MCP subcommands
+    if args.subcommand == "mcp":
         if args.mcp_command == "list":
             return mcp_list()
         elif args.mcp_command == "init":
@@ -339,8 +363,8 @@ def main():
         elif args.mcp_command == "config":
             return mcp_config()
         else:
-            print(f"Unknown MCP command: {args.mcp_command}", file=sys.stderr)
-            print("Available commands: list, init, config", file=sys.stderr)
+            # No MCP subcommand provided
+            mcp_parser.print_help()
             return 1
 
     # Normal operation: start server and run client
@@ -350,8 +374,8 @@ def main():
         # Start server
         server_process = start_server()
 
-        # Run client
-        exit_code = asyncio.run(run_client())
+        # Run client (with optional message for script mode)
+        exit_code = asyncio.run(run_client(args.message))
 
         return exit_code
 

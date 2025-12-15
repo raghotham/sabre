@@ -81,21 +81,31 @@ class Bash:
     """Bash command execution helper."""
 
     @staticmethod
-    def execute(command: str, timeout: int = None) -> BashResult:
+    def execute(command: str, timeout: int = None, quiet: bool = False) -> BashResult:
         """
         Execute a bash command.
 
         Examples:
-            result(Bash.execute("ls -la"))
-            result(Bash.execute("cat config.txt"))
-            files = Bash.execute("ls *.py").stdout.split('\\n')
+            Bash.execute("ls -la")  # Output is printed automatically
+            result(Bash.execute("cat config.txt"))  # Explicit result capture
+            files = Bash.execute("ls *.py", quiet=True).stdout.split('\\n')  # Suppress output
 
         Args:
             command: Bash command to execute
-            timeout: Timeout in milliseconds (default 10000)
+            timeout: Timeout in milliseconds (default 300000 = 5 minutes)
+            quiet: If True, don't print output (default False)
 
         Returns:
             BashResult with stdout, stderr, exit_code
         """
-        timeout = timeout if timeout is not None else 10000
-        return execute_bash(command, timeout=timeout)
+        timeout = timeout if timeout is not None else 300000  # 5 minutes default
+        result = execute_bash(command, timeout=timeout)
+
+        # Auto-print output so LLM sees it in helpers_result
+        # This ensures output is captured even without explicit result() call
+        if not quiet:
+            output = result.get_str()
+            if output.strip():
+                print(output)
+
+        return result
