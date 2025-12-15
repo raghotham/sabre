@@ -441,16 +441,18 @@ class Client:
         """Run client in non-interactive mode with a single message"""
         try:
             async with httpx.AsyncClient() as client:
-                # Show user message
+                # Show user message (escape HTML to prevent parsing errors)
                 user_color = self.tui.colors["user_input"]
-                self.tui.print(f'<style fg="{user_color}">&gt; {message}</style>')
+                escaped_message = self.tui.html_escape(message)
+                self.tui.print(f'<style fg="{user_color}">&gt; {escaped_message}</style>')
                 self.tui.print()
 
                 # Send message
                 await self.send_message(client, message)
 
         except Exception as e:
-            self.tui.print(f'<style fg="ansired">Error:</style> {e}')
+            escaped_error = self.tui.html_escape(str(e))
+            self.tui.print(f'<style fg="ansired">Error:</style> {escaped_error}')
             logger.error(f"Error in run_once: {e}", exc_info=True)
             return 1
 
@@ -537,16 +539,22 @@ class Client:
         return 0
 
 
-async def main():
+async def main(message: str | None = None):
     """Entry point for client"""
     import argparse
     from sabre.common.paths import get_logs_dir, ensure_dirs
 
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description="SABRE Client")
-    parser.add_argument("message", nargs="?", help="Message to send (non-interactive mode)")
-    parser.add_argument("--port", default=os.getenv("PORT", "8011"), help="Server port")
-    args = parser.parse_args()
+    # Parse command line arguments (only if message not provided programmatically)
+    if message is None:
+        parser = argparse.ArgumentParser(description="SABRE Client")
+        parser.add_argument("message", nargs="?", help="Message to send (non-interactive mode)")
+        parser.add_argument("--port", default=os.getenv("PORT", "8011"), help="Server port")
+        args = parser.parse_args()
+        message = args.message
+        port = args.port
+    else:
+        # Message provided programmatically (from CLI --message flag)
+        port = os.getenv("PORT", "8011")
 
     # Setup logging using XDG-compliant paths
     ensure_dirs()
@@ -562,14 +570,14 @@ async def main():
     )
 
     # Get server URL
-    server_url = f"http://localhost:{args.port}"
+    server_url = f"http://localhost:{port}"
 
     # Create client (use /theme to toggle light/dark mode)
     client = Client(server_url=server_url)
 
     # If message provided, run in non-interactive mode
-    if args.message:
-        return await client.run_once(args.message)
+    if message:
+        return await client.run_once(message)
     else:
         return await client.run()
 
