@@ -374,17 +374,8 @@ class TUI:
                     elif url.startswith("data:image"):
                         self._render_image(url, alt_text)
 
-        # Display session info at the end (only for top-level complete, depth=1)
-        if depth == 1:
-            session_id = event_data.get("session_id", "")
-            workspace_dir = event_data.get("workspace_dir", "")
-            if session_id or workspace_dir:
-                self.print()  # Blank line before session info
-                dim_color = "#666666"  # Dim gray color
-                if session_id:
-                    self.print(f'<style fg="{dim_color}">Session ID: {session_id}</style>')
-                if workspace_dir:
-                    self.print(f'<style fg="{dim_color}">Workspace: {workspace_dir}</style>')
+        # Session info is now displayed at the beginning of the session
+        # (see client.py ResponseStartEvent handler)
 
     # ==================== Image Rendering ====================
 
