@@ -680,6 +680,28 @@ class Orchestrator:
                             item, session_id, helper_tree_context["conversation_id"], filename
                         )
                         image_urls.append(url)
+
+                        # Log the file save to session.jsonl
+                        if self.session_logger:
+                            files_dir = get_session_files_dir(session_id)
+                            file_path = files_dir / filename
+
+                            self.session_logger.log_file_saved(
+                                session_id=session_id,
+                                filename=filename,
+                                file_path=str(file_path),
+                                file_type="image",
+                                context=f"helper_result_{helper_name}",
+                                metadata={
+                                    "mime_type": item.mime_type,
+                                    "size_bytes": len(base64.b64decode(item.image_data)) if item.image_data else 0,
+                                    "helper_name": helper_name,
+                                    "message_num": message_num,
+                                    "helper_num": i + 1,
+                                    "image_num": len(image_urls),
+                                },
+                            )
+
                         # Keep original base64 ImageContent for Files API upload
                         saved_content.append(item)
                     else:
