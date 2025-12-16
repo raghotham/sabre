@@ -854,6 +854,25 @@
 
             // Output
             let outputCell = '';
+
+            // Check for helpers_execution_end event with result images
+            const helpersEndEvent = nodeData.events.find(e => e.event_type === 'helpers_execution_end');
+            let imageHtmls = [];
+
+            if (helpersEndEvent && helpersEndEvent.data && helpersEndEvent.data.result) {
+                // Extract ImageContent objects from result
+                helpersEndEvent.data.result.forEach(contentItem => {
+                    if (contentItem.type === 'image' && contentItem.data && contentItem.data.image) {
+                        const imageUrl = contentItem.data.image;
+                        // Convert localhost URL to relative path or use as-is
+                        const imagePath = imageUrl.startsWith('http://localhost')
+                            ? imageUrl
+                            : `http://localhost:8011/v1/sessions/${currentSessionPath}/files/${imageUrl}`;
+                        imageHtmls.push(`<div class="screenshot-container"><img src="${imagePath}" alt="Helper result" class="screenshot-image" /></div>`);
+                    }
+                });
+            }
+
             if (outputs.length > 0) {
                 const outputDivs = outputs.map(output => {
                     const isError = output.output_type === 'stderr';
@@ -873,7 +892,10 @@
 
                     return `<div class="${className}">${content}</div>`;
                 }).join('');
-                outputCell = `<div class="output-cell">${outputDivs}</div>`;
+                outputCell = `<div class="output-cell">${outputDivs}${imageHtmls.join('')}</div>`;
+            } else if (imageHtmls.length > 0) {
+                // Only images, no text output
+                outputCell = `<div class="output-cell">${imageHtmls.join('')}</div>`;
             }
 
             return `
