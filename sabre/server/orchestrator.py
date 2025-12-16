@@ -678,9 +678,7 @@ class Orchestrator:
                 if len(output_text_for_llm) > MAX_INLINE_CHARS:
                     logger.info(f"Result is large ({len(output_text_for_llm)} chars), saving to file for LLM reference")
                     # Save to file and upload to Files API
-                    file_id = await self._save_large_result_to_file(
-                        output_text_for_llm, helper_tree_context["conversation_id"], i + 1
-                    )
+                    file_id = await self._save_large_result_to_file(output_text_for_llm, session_id, i + 1)
                     # Replace with file reference for LLM (show preview + file_id)
                     output_text_for_llm = (
                         f"[Large result ({len(output_text_for_llm)} chars) uploaded to file_id: {file_id}]\n\n"
@@ -1107,7 +1105,7 @@ class Orchestrator:
             logger.error(f"Failed to upload image to Files API: {e}")
             raise
 
-    async def _save_large_result_to_file(self, content: str, conversation_id: str, helper_num: int) -> str:
+    async def _save_large_result_to_file(self, content: str, session_id: str, helper_num: int) -> str:
         """
         Save large helper result to file and upload to Files API.
 
@@ -1116,7 +1114,7 @@ class Orchestrator:
 
         Args:
             content: Large text content to save
-            conversation_id: Conversation ID for directory organization
+            session_id: Session ID for directory organization
             helper_num: Helper number for unique filename
 
         Returns:
@@ -1125,11 +1123,11 @@ class Orchestrator:
         Raises:
             Exception if upload fails
         """
-        from sabre.common.paths import get_files_dir
+        from sabre.common.paths import get_session_files_dir
         import io
 
         # Save to disk first
-        files_dir = get_files_dir(conversation_id)
+        files_dir = get_session_files_dir(session_id)
         files_dir.mkdir(parents=True, exist_ok=True)
 
         filename = f"helper_{helper_num}_result.txt"
