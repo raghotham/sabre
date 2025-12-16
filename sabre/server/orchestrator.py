@@ -307,7 +307,10 @@ class Orchestrator:
                 final_message = full_response_text
 
                 # Emit complete event
-                await self._emit_complete_event(tree_context, final_message, event_callback)
+                from sabre.common.paths import get_session_workspace_dir
+
+                workspace_dir = str(get_session_workspace_dir(session_id))
+                await self._emit_complete_event(tree_context, final_message, session_id, workspace_dir, event_callback)
 
                 return OrchestrationResult(
                     success=True,
@@ -884,7 +887,12 @@ class Orchestrator:
     # ============================================================
 
     async def _emit_complete_event(
-        self, tree_context: dict, final_message: str, callback: Callable[[Event], Awaitable[None]] | None
+        self,
+        tree_context: dict,
+        final_message: str,
+        session_id: str,
+        workspace_dir: str,
+        callback: Callable[[Event], Awaitable[None]] | None,
     ):
         """
         Emit completion event.
@@ -892,10 +900,19 @@ class Orchestrator:
         Args:
             tree_context: Tree context dict
             final_message: Final response text
+            session_id: Session ID for this execution
+            workspace_dir: Workspace directory path for this session
             callback: Event callback
         """
         if callback:
-            await callback(CompleteEvent(**tree_context, final_message=final_message))
+            await callback(
+                CompleteEvent(
+                    **tree_context,
+                    final_message=final_message,
+                    session_id=session_id,
+                    workspace_dir=workspace_dir,
+                )
+            )
 
     def _get_openai_client(self):
         """

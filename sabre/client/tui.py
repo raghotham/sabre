@@ -374,6 +374,24 @@ class TUI:
                     elif url.startswith("data:image"):
                         self._render_image(url, alt_text)
 
+        # Display session info at the end (only for top-level complete, depth=1)
+        if depth == 1:
+            session_id = event_data.get("session_id", "")
+            workspace_dir = event_data.get("workspace_dir", "")
+            if session_id or workspace_dir:
+                self.print()  # Blank line before session info
+                from prompt_toolkit import print_formatted_text
+                from prompt_toolkit.formatted_text import FormattedText
+
+                info_lines = []
+                if session_id:
+                    info_lines.append(("class:dim", f"Session ID: {session_id}"))
+                if workspace_dir:
+                    info_lines.append(("class:dim", f"Workspace: {workspace_dir}"))
+
+                for line in info_lines:
+                    print_formatted_text(FormattedText([line]), style=self.style)
+
     # ==================== Image Rendering ====================
 
     def _render_image_url(self, url: str):

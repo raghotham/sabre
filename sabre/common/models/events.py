@@ -434,6 +434,8 @@ class CompleteEvent(Event):
         path: list[str],
         conversation_id: str,
         final_message: str,
+        session_id: str = "",
+        workspace_dir: str = "",
         path_summary: str = "",
     ):
         super().__init__(
@@ -445,7 +447,11 @@ class CompleteEvent(Event):
             conversation_id=conversation_id,
             timestamp=datetime.now(),
             path_summary=path_summary,
-            data={"final_message": final_message},
+            data={
+                "final_message": final_message,
+                "session_id": session_id,
+                "workspace_dir": workspace_dir,
+            },
         )
 
 
