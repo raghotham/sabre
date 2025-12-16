@@ -380,6 +380,47 @@ async def get_session_data(session_id: str):
     return FileResponse(session_file, media_type="application/x-ndjson")
 
 
+@app.get("/v1/sessions/{session_id}/atif")
+async def get_session_atif(session_id: str, model: str = None):
+    """
+    Get session in ATIF (Agent Trajectory Interchange Format) v1.2.
+
+    ATIF is a standardized format for representing agent execution traces,
+    used by Harbor, Terminal-Bench, and other benchmarking frameworks.
+
+    Query Parameters:
+        model: Optional model name to include in agent metadata (default: from env OPENAI_MODEL)
+
+    Returns:
+        JSON response with ATIF-formatted trajectory
+
+    Security:
+        - Only serves sessions from session directories
+        - Returns 404 for non-existent sessions
+    """
+    from sabre.server.atif_export import events_to_atif
+    import os
+
+    # Load session events
+    events = manager.session_logger.get_session(session_id)
+
+    if not events:
+        raise HTTPException(status_code=404, detail="Session not found or has no events")
+
+    # Get model name from query param, env, or default
+    model_name = model or os.environ.get("OPENAI_MODEL", "gpt-4o")
+
+    # Convert to ATIF
+    atif = events_to_atif(
+        events,
+        agent_name="sabre",
+        agent_version="latest",  # TODO: Get from package version
+        model_name=model_name,
+    )
+
+    return atif
+
+
 @app.get("/v1/sessions/{session_id}/files")
 async def list_session_files(session_id: str):
     """
