@@ -593,9 +593,16 @@ class Orchestrator:
                     metadata={"block_number": i + 1, "code": code},  # Full code, not truncated
                 )
 
+            # Extract helper name from code for better labeling
+            helper_name = self._extract_helper_name(code)
+
             # Emit start event
             if event_callback:
-                await event_callback(HelpersExecutionStartEvent(**helper_tree_context, code=code, block_number=i + 1))
+                await event_callback(
+                    HelpersExecutionStartEvent(
+                        **helper_tree_context, code=code, block_number=i + 1, helper_name=helper_name
+                    )
+                )
                 # Yield control to event loop so SSE generator can process queue
                 await asyncio.sleep(0)
 
@@ -650,25 +657,8 @@ class Orchestrator:
                             pass
                 message_num = (max(message_nums) + 1) if message_nums else 1
 
-                # Try to extract helper name from the code (for better filenames)
-                helper_name = "unknown"
-                try:
-                    # Simple heuristic: look for common helper patterns in the code
-                    code_lower = code.lower()
-                    if "download(" in code_lower:
-                        helper_name = "download"
-                    elif "search.web_search(" in code_lower or "search(" in code_lower:
-                        helper_name = "search"
-                    elif "web.get_url(" in code_lower:
-                        helper_name = "web"
-                    elif "plt." in code_lower or "matplotlib" in code_lower:
-                        helper_name = "matplotlib"
-                    elif "llm_call(" in code_lower:
-                        helper_name = "llm_call"
-                    elif "sabre_call(" in code_lower:
-                        helper_name = "sabre_call"
-                except Exception:
-                    pass  # Keep "unknown" if extraction fails
+                # Extract helper name from the code (for better filenames)
+                helper_name = self._extract_helper_name(code)
 
                 for item in result.content:
                     if isinstance(item, ImageContent) and item.image_data:
@@ -782,6 +772,7 @@ class Orchestrator:
                             success=True,
                             result=display_content,
                             block_number=i + 1,
+                            helper_name=helper_name,
                         )
                     )
                     # Yield control to event loop so SSE generator can process queue
@@ -818,6 +809,7 @@ class Orchestrator:
                             success=False,
                             result=[TextContent(error_text)],
                             block_number=i + 1,
+                            helper_name=helper_name,
                         )
                     )
 
@@ -1085,6 +1077,39 @@ class Orchestrator:
     # ============================================================
     # FILE MANAGEMENT
     # ============================================================
+
+    def _extract_helper_name(self, code: str) -> str:
+        """
+        Extract helper name from code for better labeling.
+
+        Args:
+            code: Python code to analyze
+
+        Returns:
+            Helper name (e.g., 'download', 'matplotlib', 'llm_call') or 'unknown'
+        """
+        try:
+            # Simple heuristic: look for common helper patterns in the code
+            code_lower = code.lower()
+            if "download(" in code_lower:
+                return "download"
+            elif "search.web_search(" in code_lower or "search(" in code_lower:
+                return "search"
+            elif "web.get_url(" in code_lower:
+                return "web"
+            elif "plt." in code_lower or "matplotlib" in code_lower:
+                return "matplotlib"
+            elif "llm_call(" in code_lower:
+                return "llm_call"
+            elif "sabre_call(" in code_lower:
+                return "sabre_call"
+            elif "bash.execute(" in code_lower:
+                return "bash"
+            elif "result(" in code_lower:
+                return "result"
+            return "unknown"
+        except Exception:
+            return "unknown"
 
     def _save_image_to_disk(
         self, image_content: ImageContent, session_id: str, conversation_id: str, filename: str

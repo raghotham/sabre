@@ -278,23 +278,29 @@ class Client:
 
                     elif isinstance(event, HelpersExecutionStartEvent):
                         block_number = event.data["block_number"]
-                        logger.info(f"  └─ EXECUTING helper #{block_number}")
-                        self.tui.print_tree_node(
-                            "EXECUTING", f"helper #{block_number}...", depth=event.depth, path=event.path
+                        helper_name = event.data.get("helper_name", "unknown")
+                        label = (
+                            f"{helper_name} #{block_number}" if helper_name != "unknown" else f"helper #{block_number}"
                         )
+                        logger.info(f"  └─ EXECUTING {label}")
+                        self.tui.print_tree_node("EXECUTING", f"{label}...", depth=event.depth, path=event.path)
 
                     elif isinstance(event, HelpersExecutionEndEvent):
                         duration_ms = event.data["duration_ms"]
                         success = event.data["success"]
                         block_number = event.data["block_number"]
+                        helper_name = event.data.get("helper_name", "unknown")
                         result = event.data["result"]
 
+                        label = (
+                            f"{helper_name} #{block_number}" if helper_name != "unknown" else f"helper #{block_number}"
+                        )
                         status = "✓" if success else "✗"
-                        logger.info(f"  └─ RESULT helper #{block_number} {status} {duration_ms:.0f}ms")
+                        logger.info(f"  └─ RESULT {label} {status} {duration_ms:.0f}ms")
                         color = self.tui.colors["complete"] if success else self.tui.colors["error"]
                         self.tui.print_tree_node(
                             "RESULT",
-                            f'helper #{block_number} <style fg="{color}">{status} {duration_ms:.0f}ms</style>',
+                            f'{label} <style fg="{color}">{status} {duration_ms:.0f}ms</style>',
                             depth=event.depth,
                             path=event.path,
                         )
