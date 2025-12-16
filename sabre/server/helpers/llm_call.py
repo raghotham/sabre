@@ -255,6 +255,7 @@ class LLMCall:
                     # Save to session files directory first
                     # Format: file_llmcall_{timestamp}_{idx}.png
                     import time
+                    import base64
                     from sabre.common.paths import get_session_files_dir
 
                     if session_id and session_id != "unknown":
@@ -267,7 +268,23 @@ class LLMCall:
 
                         # Save image to disk using parent orchestrator's method
                         parent_orchestrator._save_image_to_disk(img, session_id, "llmcall_attachment", filename)
+                        file_path = files_dir / filename
                         logger.info(f"  💾 Saved image {idx + 1} to disk: {filename}")
+
+                        # Log the file save to session.jsonl
+                        if session_logger:
+                            session_logger.log_file_saved(
+                                session_id=session_id,
+                                filename=filename,
+                                file_path=str(file_path),
+                                file_type="image",
+                                context="llmcall_attachment",
+                                metadata={
+                                    "mime_type": img.mime_type,
+                                    "size_bytes": len(base64.b64decode(img.image_data)) if img.image_data else 0,
+                                    "attachment_index": idx + 1,
+                                },
+                            )
 
                     # Upload to Files API for token-efficient LLM input
                     logger.debug(f"  📤 Uploading image {idx + 1}/{len(image_attachments)} to Files API...")
