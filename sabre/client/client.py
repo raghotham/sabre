@@ -45,6 +45,11 @@ class Client:
         self.current_request_id: str | None = None
         self.conversation_id: str | None = None
 
+        # Track session info (displayed at start of each conversation)
+        self.session_id: str | None = None
+        self.workspace_dir: str | None = None
+        self.session_info_displayed = False
+
         # Create styled prompt session
         prompt_style = PromptStyle.from_dict(
             {
@@ -242,6 +247,16 @@ class Client:
                     if isinstance(event, ResponseStartEvent):
                         if not response_started:
                             self.tui.print()  # Blank line before first assistant response
+
+                            # Display session info at the start if we haven't yet
+                            if not self.session_info_displayed and self.session_id:
+                                dim_color = "#666666"  # Dim gray color
+                                self.tui.print(f'<style fg="{dim_color}">Session ID: {self.session_id}</style>')
+                                if self.workspace_dir:
+                                    self.tui.print(f'<style fg="{dim_color}">Workspace: {self.workspace_dir}</style>')
+                                self.tui.print()  # Blank line after session info
+                                self.session_info_displayed = True
+
                             response_started = True
 
                         # Show "Thinking..." animation instead of tree node
@@ -263,23 +278,29 @@ class Client:
 
                     elif isinstance(event, HelpersExecutionStartEvent):
                         block_number = event.data["block_number"]
-                        logger.info(f"  └─ EXECUTING helper #{block_number}")
-                        self.tui.print_tree_node(
-                            "EXECUTING", f"helper #{block_number}...", depth=event.depth, path=event.path
+                        helper_name = event.data.get("helper_name", "unknown")
+                        label = (
+                            f"{helper_name} #{block_number}" if helper_name != "unknown" else f"helper #{block_number}"
                         )
+                        logger.info(f"  └─ EXECUTING {label}")
+                        self.tui.print_tree_node("EXECUTING", f"{label}...", depth=event.depth, path=event.path)
 
                     elif isinstance(event, HelpersExecutionEndEvent):
                         duration_ms = event.data["duration_ms"]
                         success = event.data["success"]
                         block_number = event.data["block_number"]
+                        helper_name = event.data.get("helper_name", "unknown")
                         result = event.data["result"]
 
+                        label = (
+                            f"{helper_name} #{block_number}" if helper_name != "unknown" else f"helper #{block_number}"
+                        )
                         status = "✓" if success else "✗"
-                        logger.info(f"  └─ RESULT helper #{block_number} {status} {duration_ms:.0f}ms")
+                        logger.info(f"  └─ RESULT {label} {status} {duration_ms:.0f}ms")
                         color = self.tui.colors["complete"] if success else self.tui.colors["error"]
                         self.tui.print_tree_node(
                             "RESULT",
-                            f'helper #{block_number} <style fg="{color}">{status} {duration_ms:.0f}ms</style>',
+                            f'{label} <style fg="{color}">{status} {duration_ms:.0f}ms</style>',
                             depth=event.depth,
                             path=event.path,
                         )
@@ -370,6 +391,16 @@ class Client:
 
                     elif isinstance(event, CompleteEvent):
                         final_message = event.data["final_message"]
+
+                        # Store session info (only from top-level completes)
+                        if event.depth == 1:
+                            session_id = event.data.get("session_id", "")
+                            workspace_dir = event.data.get("workspace_dir", "")
+                            if session_id:
+                                self.session_id = session_id
+                            if workspace_dir:
+                                self.workspace_dir = workspace_dir
+
                         if final_message.strip():
                             self.tui.print()  # Blank line
                             self.tui.print_tree_node("COMPLETE", "", depth=event.depth, path=event.path)

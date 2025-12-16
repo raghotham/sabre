@@ -241,22 +241,60 @@ class LLMCall:
 
             logger.info("Created new orchestrator instance for nested llm_call")
 
+            # Get session_id from context early for file saving
+            session_id = ctx.session_id if ctx else "unknown"
+
             # Upload images to Files API before passing to orchestrator
+            # Also save them to session files directory for persistence
             uploaded_images = []
             if image_attachments:
-                logger.info(f"📤 Uploading {len(image_attachments)} images to Files API...")
+                logger.info(
+                    f"📤 Processing {len(image_attachments)} images (saving to disk + uploading to Files API)..."
+                )
                 for idx, img in enumerate(image_attachments):
-                    # Upload and replace with file_id reference
-                    logger.debug(f"  Uploading image {idx + 1}/{len(image_attachments)}...")
+                    # Save to session files directory first
+                    # Format: file_llmcall_{timestamp}_{idx}.png
+                    import time
+                    import base64
+                    from sabre.common.paths import get_session_files_dir
+
+                    if session_id and session_id != "unknown":
+                        files_dir = get_session_files_dir(session_id)
+                        files_dir.mkdir(parents=True, exist_ok=True)
+
+                        # Create filename with timestamp to avoid collisions
+                        timestamp = int(time.time() * 1000)  # milliseconds
+                        filename = f"file_llmcall_{timestamp}_{idx + 1}.png"
+
+                        # Save image to disk using parent orchestrator's method
+                        parent_orchestrator._save_image_to_disk(img, session_id, "llmcall_attachment", filename)
+                        file_path = files_dir / filename
+                        logger.info(f"  💾 Saved image {idx + 1} to disk: {filename}")
+
+                        # Log the file save to session.jsonl
+                        if session_logger:
+                            session_logger.log_file_saved(
+                                session_id=session_id,
+                                filename=filename,
+                                file_path=str(file_path),
+                                file_type="image",
+                                context="llmcall_attachment",
+                                metadata={
+                                    "mime_type": img.mime_type,
+                                    "size_bytes": len(base64.b64decode(img.image_data)) if img.image_data else 0,
+                                    "attachment_index": idx + 1,
+                                },
+                            )
+
+                    # Upload to Files API for token-efficient LLM input
+                    logger.debug(f"  📤 Uploading image {idx + 1}/{len(image_attachments)} to Files API...")
                     file_id = await orchestrator._upload_image_to_files_api(img)
                     uploaded_images.append(ImageContent(file_id=file_id, mime_type=img.mime_type))
                     logger.info(f"  ✓ Uploaded image {idx + 1}: file_id={file_id}, mime_type={img.mime_type}")
-                logger.info(f"✅ Successfully uploaded {len(uploaded_images)} images with file_id references")
+                logger.info(f"✅ Successfully processed {len(uploaded_images)} images (saved + uploaded)")
 
             # RECURSIVE CALL with new orchestrator instance
             # Pass images as structured input to executor
-            # Get session_id from context to maintain session logging
-            session_id = ctx.session_id if ctx else "unknown"
 
             if uploaded_images:
                 logger.info(

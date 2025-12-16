@@ -220,7 +220,16 @@ async def _download_async(urls_or_results: Any, max_urls: int = 10) -> list:
         print(error_msg)
         return [TextContent(error_msg)]
 
-    logger.info(f"Successfully extracted {len(urls)} URL(s) for download")
+    # Filter out empty URLs
+    urls = [url for url in urls if url and url.strip()]
+
+    if not urls:
+        error_msg = "ERROR: All extracted URLs were empty or invalid"
+        logger.error(error_msg)
+        print(error_msg)
+        return [TextContent(error_msg)]
+
+    logger.info(f"Successfully extracted {len(urls)} valid URL(s) for download")
 
     # Limit number of URLs
     if len(urls) > max_urls:

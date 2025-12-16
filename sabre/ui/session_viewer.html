@@ -579,6 +579,10 @@
                 <span class="value" id="total-tokens">-</span>
             </div>
             <div class="stat-item">
+                <span class="label">Files:</span>
+                <span class="value" id="file-count">-</span>
+            </div>
+            <div class="stat-item">
                 <span class="label">Errors:</span>
                 <span class="value" id="error-count">-</span>
             </div>
@@ -702,6 +706,7 @@
 
         function processSessionData() {
             nodesMap.clear();
+            sessionFiles = [];  // Reset files list
 
             sessionData.forEach(event => {
                 if (event.node_id) {
@@ -713,11 +718,30 @@
                             type: event.node_type || event.event_type,
                             conversation_id: event.conversation_id,
                             events: [],
-                            children: []
+                            children: [],
+                            files: []  // Track files saved by this node
                         });
                     }
                     nodesMap.get(event.node_id).events.push(event);
                 }
+            });
+
+            // Process file_saved events and associate with nodes
+            const fileSavedEvents = sessionData.filter(e => e.event_type === 'file_saved');
+            console.log(`Found ${fileSavedEvents.length} file_saved events`);
+
+            fileSavedEvents.forEach(fileEvent => {
+                // file_saved events don't have node_id, so we need to associate them
+                // with the most recent active node or show them separately
+                // For now, let's add them to a global files list
+                sessionFiles.push({
+                    filename: fileEvent.filename,
+                    file_path: fileEvent.file_path,
+                    file_type: fileEvent.file_type,
+                    context: fileEvent.context,
+                    metadata: fileEvent.metadata,
+                    timestamp: fileEvent.timestamp
+                });
             });
 
             // Build tree relationships
@@ -854,6 +878,55 @@
 
             // Output
             let outputCell = '';
+
+            // Check for files saved during this time period (based on timestamp proximity)
+            const nodeStartTime = startEvent ? new Date(startEvent.timestamp) : null;
+            const nodeEndTime = completeEvent ? new Date(completeEvent.timestamp) : null;
+
+            let nodeFiles = [];
+            if (nodeStartTime && nodeEndTime) {
+                // Find files saved during this node's execution window
+                nodeFiles = sessionFiles.filter(file => {
+                    const fileTime = new Date(file.timestamp);
+                    return fileTime >= nodeStartTime && fileTime <= nodeEndTime;
+                });
+            }
+
+            // Render files from file_saved events
+            let imageHtmls = nodeFiles
+                .filter(file => file.file_type === 'image')
+                .map(file => {
+                    const imagePath = `http://localhost:8011/v1/sessions/${currentSessionPath}/files/${file.filename}`;
+                    const context = file.context || 'unknown';
+                    const helperName = file.metadata?.helper_name || '';
+                    const caption = helperName ? `${context} (${helperName})` : context;
+                    return `<div class="screenshot-container">
+                        <div style="font-size: 10px; color: #888; margin-bottom: 5px;">${caption}</div>
+                        <img src="${imagePath}" alt="${file.filename}" class="screenshot-image" title="${file.filename}" />
+                    </div>`;
+                });
+
+            // Also check for helpers_execution_end event with result images (legacy support)
+            const helpersEndEvent = nodeData.events.find(e => e.event_type === 'helpers_execution_end');
+
+            if (helpersEndEvent && helpersEndEvent.data && helpersEndEvent.data.result) {
+                // Extract ImageContent objects from result
+                helpersEndEvent.data.result.forEach(contentItem => {
+                    if (contentItem.type === 'image' && contentItem.data && contentItem.data.image) {
+                        const imageUrl = contentItem.data.image;
+                        // Convert localhost URL to relative path or use as-is
+                        const imagePath = imageUrl.startsWith('http://localhost')
+                            ? imageUrl
+                            : `http://localhost:8011/v1/sessions/${currentSessionPath}/files/${imageUrl}`;
+                        // Only add if not already in imageHtmls (avoid duplicates)
+                        const alreadyRendered = imageHtmls.some(html => html.includes(imagePath));
+                        if (!alreadyRendered) {
+                            imageHtmls.push(`<div class="screenshot-container"><img src="${imagePath}" alt="Helper result" class="screenshot-image" /></div>`);
+                        }
+                    }
+                });
+            }
+
             if (outputs.length > 0) {
                 const outputDivs = outputs.map(output => {
                     const isError = output.output_type === 'stderr';
@@ -873,7 +946,10 @@
 
                     return `<div class="${className}">${content}</div>`;
                 }).join('');
-                outputCell = `<div class="output-cell">${outputDivs}</div>`;
+                outputCell = `<div class="output-cell">${outputDivs}${imageHtmls.join('')}</div>`;
+            } else if (imageHtmls.length > 0) {
+                // Only images, no text output
+                outputCell = `<div class="output-cell">${imageHtmls.join('')}</div>`;
             }
 
             return `
@@ -900,12 +976,15 @@
                 return sum;
             }, 0);
 
+            const fileCount = sessionFiles.length;
+
             document.getElementById('total-events').textContent = sessionData.length;
             document.getElementById('response-nodes').textContent = responseNodes;
             document.getElementById('helper-nodes').textContent = helperNodes;
             document.getElementById('error-count').textContent = errors;
             document.getElementById('total-duration').textContent = (totalDuration / 1000).toFixed(2) + 's';
             document.getElementById('total-tokens').textContent = totalTokens.toLocaleString();
+            document.getElementById('file-count').textContent = fileCount;
         }
 
         function escapeHtml(text) {

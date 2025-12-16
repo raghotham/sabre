@@ -253,6 +253,42 @@ class SessionLogger:
         with open(session_file, "a") as f:
             f.write(json.dumps(entry, default=str) + "\n")
 
+    def log_file_saved(
+        self,
+        session_id: str,
+        filename: str,
+        file_path: str,
+        file_type: str = "image",
+        context: str = "",
+        metadata: dict | None = None,
+    ):
+        """
+        Log a file save event (e.g., screenshot, generated image, etc.).
+
+        Args:
+            session_id: Session ID
+            filename: Filename (basename only)
+            file_path: Full path to the file
+            file_type: Type of file (image, pdf, csv, etc.)
+            context: Context where file was saved (e.g., "llmcall_attachment", "helper_result")
+            metadata: Additional metadata about the file
+        """
+        session_file = get_session_log_file(session_id)
+
+        entry = {
+            "timestamp": datetime.now().isoformat(),
+            "event_type": "file_saved",
+            "session_id": session_id,
+            "filename": filename,
+            "file_path": str(file_path),
+            "file_type": file_type,
+            "context": context,
+            "metadata": metadata or {},
+        }
+
+        with open(session_file, "a") as f:
+            f.write(json.dumps(entry, default=str) + "\n")
+
     def get_session(self, session_id: str) -> list[dict]:
         """
         Load a session from disk.

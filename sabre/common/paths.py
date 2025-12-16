@@ -158,7 +158,7 @@ class SabrePaths:
     @staticmethod
     def get_session_files_dir(session_id: str) -> Path:
         """
-        Get session files directory for generated content.
+        Get session files directory for generated content (images, etc).
 
         Args:
             session_id: Session ID
@@ -167,6 +167,23 @@ class SabrePaths:
             Path to files directory within session
         """
         return SabrePaths.get_session_dir(session_id) / "files"
+
+    @staticmethod
+    def get_session_workspace_dir(session_id: str) -> Path:
+        """
+        Get session workspace directory for Bash execution.
+
+        This directory is used as the working directory for all Bash.execute()
+        commands in the session. It can be mounted into containers to share
+        the filesystem between host and container.
+
+        Args:
+            session_id: Session ID
+
+        Returns:
+            Path to workspace directory within session
+        """
+        return SabrePaths.get_session_dir(session_id) / "workspace"
 
     @staticmethod
     def ensure_dirs():
@@ -331,3 +348,8 @@ def get_session_log_file(session_id: str) -> Path:
 def get_session_files_dir(session_id: str) -> Path:
     """Get session files directory."""
     return SabrePaths.get_session_files_dir(session_id)
+
+
+def get_session_workspace_dir(session_id: str) -> Path:
+    """Get session workspace directory."""
+    return SabrePaths.get_session_workspace_dir(session_id)

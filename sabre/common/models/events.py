@@ -308,6 +308,7 @@ class HelpersExecutionStartEvent(Event):
         conversation_id: str,
         code: str,
         block_number: int = 1,
+        helper_name: str = "unknown",
         path_summary: str = "",
     ):
         super().__init__(
@@ -319,7 +320,7 @@ class HelpersExecutionStartEvent(Event):
             conversation_id=conversation_id,
             timestamp=datetime.now(),
             path_summary=path_summary,
-            data={"code": code, "block_number": block_number},
+            data={"code": code, "block_number": block_number, "helper_name": helper_name},
         )
 
 
@@ -338,6 +339,7 @@ class HelpersExecutionEndEvent(Event):
         success: bool,
         result: list,  # list[Content] from sabre.common.models.messages
         block_number: int = 1,
+        helper_name: str = "unknown",
         path_summary: str = "",
     ):
         super().__init__(
@@ -354,6 +356,7 @@ class HelpersExecutionEndEvent(Event):
                 "success": success,
                 "result": result,  # Includes text output and image URLs
                 "block_number": block_number,
+                "helper_name": helper_name,
             },
         )
 
@@ -434,6 +437,8 @@ class CompleteEvent(Event):
         path: list[str],
         conversation_id: str,
         final_message: str,
+        session_id: str = "",
+        workspace_dir: str = "",
         path_summary: str = "",
     ):
         super().__init__(
@@ -445,7 +450,11 @@ class CompleteEvent(Event):
             conversation_id=conversation_id,
             timestamp=datetime.now(),
             path_summary=path_summary,
-            data={"final_message": final_message},
+            data={
+                "final_message": final_message,
+                "session_id": session_id,
+                "workspace_dir": workspace_dir,
+            },
         )
 
 

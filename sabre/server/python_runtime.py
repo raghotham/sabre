@@ -384,7 +384,6 @@ results directly when possible."""
             RuntimeError: If conversation_id not available (no context)
         """
         from sabre.common.execution_context import get_execution_context
-        from pathlib import Path
         import json
         import base64
 
@@ -394,15 +393,17 @@ results directly when possible."""
                 f"write_file() requires basename only (got '{filename}'). Use 'data.csv', not 'path/to/data.csv'"
             )
 
-        # Step 2: Get conversation ID from context
+        # Step 2: Get session ID from context
         ctx = get_execution_context()
-        if not ctx or not ctx.conversation_id:
-            raise RuntimeError("write_file() requires conversation context")
+        if not ctx or not ctx.session_id:
+            raise RuntimeError("write_file() requires execution context with session_id")
 
-        conversation_id = ctx.conversation_id
+        session_id = ctx.session_id
 
-        # Step 3: Create directory structure
-        files_dir = Path.home() / ".local" / "share" / "sabre" / "files" / conversation_id
+        # Step 3: Create directory structure using session-based paths
+        from sabre.common.paths import get_session_files_dir
+
+        files_dir = get_session_files_dir(session_id)
         files_dir.mkdir(parents=True, exist_ok=True)
 
         file_path = files_dir / filename
@@ -493,7 +494,7 @@ results directly when possible."""
             # Step 6: Return HTTP URL
             # Use PORT env var or default to 8011 (SABRE's default port)
             port = os.getenv("PORT", "8011")
-            url = f"http://localhost:{port}/files/{conversation_id}/{filename}"
+            url = f"http://localhost:{port}/files/{session_id}/{filename}"
             logger.info(f"File accessible at: {url}")
             return url
 
@@ -532,18 +533,20 @@ results directly when possible."""
             file_path = path
             logger.info(f"Reading from absolute path: {file_path}")
         else:
-            # Basename - use conversation directory
+            # Basename - use session files directory
             ctx = get_execution_context()
-            if not ctx or not ctx.conversation_id:
+            if not ctx or not ctx.session_id:
                 raise RuntimeError(
-                    "read_file() with basename requires conversation context. "
+                    "read_file() with basename requires execution context with session_id. "
                     "Use absolute path or ensure write_file() was called first."
                 )
 
-            conversation_id = ctx.conversation_id
-            files_dir = Path.home() / ".local" / "share" / "sabre" / "files" / conversation_id
+            session_id = ctx.session_id
+            from sabre.common.paths import get_session_files_dir
+
+            files_dir = get_session_files_dir(session_id)
             file_path = files_dir / filename
-            logger.info(f"Reading from conversation directory: {file_path}")
+            logger.info(f"Reading from session files directory: {file_path}")
 
         # Step 2: Check file exists
         if not file_path.exists():
