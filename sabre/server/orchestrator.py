@@ -633,14 +633,15 @@ class Orchestrator:
 
                 conversation_id = helper_tree_context["conversation_id"]
                 # Count existing files for this conversation to determine message number
+                # New format: file_{conv_id}_msg{msg_num}_{helper_name}_hlp{hlp_num}_{img_num}.png
+                # Old format: file_{conv_id}_msg{msg_num}_hlp{hlp_num}_{img_num}.png
                 existing_files = glob.glob(str(files_dir / f"file_{conversation_id}_msg*.png"))
 
-                # Extract message numbers from filenames (file_{conv_id}_msg1_hlp1_1.png -> 1)
+                # Extract message numbers from filenames
                 message_nums = set()
                 for file_path in existing_files:
                     filename = Path(file_path).name
-                    # Expected format: file_{conv_id}_msg{msg_num}_hlp{hlp_num}_{img_num}.png
-                    # Find the msg number
+                    # Find the msg number (works for both old and new formats)
                     if "_msg" in filename:
                         try:
                             msg_part = filename.split("_msg")[1].split("_")[0]
@@ -649,12 +650,32 @@ class Orchestrator:
                             pass
                 message_num = (max(message_nums) + 1) if message_nums else 1
 
+                # Try to extract helper name from the code (for better filenames)
+                helper_name = "unknown"
+                try:
+                    # Simple heuristic: look for common helper patterns in the code
+                    code_lower = code.lower()
+                    if "download(" in code_lower:
+                        helper_name = "download"
+                    elif "search.web_search(" in code_lower or "search(" in code_lower:
+                        helper_name = "search"
+                    elif "web.get_url(" in code_lower:
+                        helper_name = "web"
+                    elif "plt." in code_lower or "matplotlib" in code_lower:
+                        helper_name = "matplotlib"
+                    elif "llm_call(" in code_lower:
+                        helper_name = "llm_call"
+                    elif "sabre_call(" in code_lower:
+                        helper_name = "sabre_call"
+                except Exception:
+                    pass  # Keep "unknown" if extraction fails
+
                 for item in result.content:
                     if isinstance(item, ImageContent) and item.image_data:
                         # Save image to disk and get URL
-                        # Format: file_{conv_id}_msg{message_num}_hlp{helper_num}_{image_num}.png
-                        # i+1 is helper number, len(image_urls)+1 is image number
-                        filename = f"file_{conversation_id}_msg{message_num}_hlp{i + 1}_{len(image_urls) + 1}.png"
+                        # Format: file_{conv_id}_msg{message_num}_{helper_name}_hlp{helper_num}_{image_num}.png
+                        # This allows tracking which helper generated the image
+                        filename = f"file_{conversation_id}_msg{message_num}_{helper_name}_hlp{i + 1}_{len(image_urls) + 1}.png"
                         url = self._save_image_to_disk(
                             item, session_id, helper_tree_context["conversation_id"], filename
                         )
