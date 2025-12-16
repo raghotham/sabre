@@ -380,17 +380,11 @@ class TUI:
             workspace_dir = event_data.get("workspace_dir", "")
             if session_id or workspace_dir:
                 self.print()  # Blank line before session info
-                from prompt_toolkit import print_formatted_text
-                from prompt_toolkit.formatted_text import FormattedText
-
-                info_lines = []
+                dim_color = "#666666"  # Dim gray color
                 if session_id:
-                    info_lines.append(("class:dim", f"Session ID: {session_id}"))
+                    self.print(f'<style fg="{dim_color}">Session ID: {session_id}</style>')
                 if workspace_dir:
-                    info_lines.append(("class:dim", f"Workspace: {workspace_dir}"))
-
-                for line in info_lines:
-                    print_formatted_text(FormattedText([line]), style=self.style)
+                    self.print(f'<style fg="{dim_color}">Workspace: {workspace_dir}</style>')
 
     # ==================== Image Rendering ====================
 
