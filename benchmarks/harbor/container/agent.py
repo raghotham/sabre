@@ -182,30 +182,8 @@ class SabreAgent(BaseInstalledAgent):
         # The OPENAI_API_KEY environment variable is passed via env dict
         # Execute from /app so files are created in the right place
 
-        # Prepend instruction to force SABRE to execute code and use available tools
-        # Guide it to use llm_call() for image analysis since chess tools aren't installed
-        prefixed_instruction = (
-            "CRITICAL: You MUST use <helpers> blocks with Python code to complete this task. "
-            "DO NOT respond conversationally or talk about what you would do. "
-            "\n\n"
-            "ENVIRONMENT:\n"
-            "- You are running in a Docker container with working directory /app\n"
-            "- Files like chess_board.png are already present in /app\n"
-            "- Use Bash.execute() to create output files in /app\n"
-            "- You do NOT have chess analysis tools installed (no stockfish, chess-tool, etc.)\n"
-            "\n\n"
-            "AVAILABLE TOOLS FOR THIS TASK:\n"
-            "- For image analysis: Use llm_call() to analyze images and extract information\n"
-            "- For file operations: Use Bash.execute() to read/write files\n"
-            "- Example: analyze_result = llm_call(['/app/chess_board.png'], 'What is the chess position in FEN notation?')\n"
-            "\n\n"
-            f"TASK: {instruction}\n"
-            "\n"
-            "Remember: The task REQUIRES you to execute code and create files - conversation alone will fail."
-        )
-
         # Escape the instruction for shell - replace double quotes with escaped quotes
-        escaped_instruction = prefixed_instruction.replace('"', '\\"')
+        escaped_instruction = instruction.replace('"', '\\"')
 
         return [
             ExecInput(
