@@ -28,18 +28,25 @@ if TYPE_CHECKING:
     from harbor.models.trial.result import AgentInfo, ModelInfo
 
 # Import from harbor - these will be available when running in Harbor environment
+# Import AgentInfo and ModelInfo separately since they exist in newer Harbor versions
 HARBOR_AVAILABLE = False
+AgentInfo = None
+ModelInfo = None
+
+try:
+    from harbor.models.trial.result import AgentInfo, ModelInfo
+except ImportError:
+    pass  # Will use stubs below
+
 try:
     from harbor.agents.installed.base import BaseInstalledAgent
     from harbor.models.agent.context import AgentContext
-    from harbor.models.exec import ExecInput
-    from harbor.models.trial.result import AgentInfo, ModelInfo
 
     HARBOR_AVAILABLE = True
 except ImportError as e:
     import sys
 
-    print(f"[sabre_agent] Harbor import failed: {e}, using stubs", file=sys.stderr)
+    print(f"[sabre_agent] Harbor BaseInstalledAgent import failed: {e}, using stubs", file=sys.stderr)
 
     class BaseInstalledAgentStub:
         """Stub class for when harbor is not installed."""
@@ -58,6 +65,11 @@ except ImportError as e:
 
     BaseInstalledAgent = BaseInstalledAgentStub  # type: ignore
 
+# Import ExecInput separately - it may not exist in all Harbor versions
+try:
+    from harbor.models.exec import ExecInput
+except ImportError:
+
     class ExecInputStub:
         """Stub for ExecInput when harbor is not installed."""
 
@@ -68,44 +80,60 @@ except ImportError as e:
                 setattr(self, k, v)
 
     ExecInput = ExecInputStub  # type: ignore
-    AgentContext = Any  # type: ignore
 
+AgentContext = Any  # type: ignore
+
+# Only create stubs for AgentInfo/ModelInfo if they weren't imported above
+if AgentInfo is None or ModelInfo is None:
     # Import pydantic for stub classes
     try:
         from pydantic import BaseModel
 
-        class AgentInfoStub(BaseModel):
-            """Stub for AgentInfo when harbor is not installed."""
+        if AgentInfo is None:
 
-            name: str
-            version: str
-            model_info: Any
+            class AgentInfoStub(BaseModel):
+                """Stub for AgentInfo when harbor is not installed."""
 
-        class ModelInfoStub(BaseModel):
-            """Stub for ModelInfo when harbor is not installed."""
+                name: str
+                version: str
+                model_info: Any
 
-            name: str
-            provider: str
+            AgentInfo = AgentInfoStub  # type: ignore
+
+        if ModelInfo is None:
+
+            class ModelInfoStub(BaseModel):
+                """Stub for ModelInfo when harbor is not installed."""
+
+                name: str
+                provider: str
+
+            ModelInfo = ModelInfoStub  # type: ignore
 
     except ImportError:
         # Fallback if pydantic not available
-        class AgentInfoStub:  # type: ignore
-            """Stub for AgentInfo when harbor is not installed."""
+        if AgentInfo is None:
 
-            def __init__(self, name: str, version: str, model_info: Any):
-                self.name = name
-                self.version = version
-                self.model_info = model_info
+            class AgentInfoStub:  # type: ignore
+                """Stub for AgentInfo when harbor is not installed."""
 
-        class ModelInfoStub:  # type: ignore
-            """Stub for ModelInfo when harbor is not installed."""
+                def __init__(self, name: str, version: str, model_info: Any):
+                    self.name = name
+                    self.version = version
+                    self.model_info = model_info
 
-            def __init__(self, name: str, provider: str):
-                self.name = name
-                self.provider = provider
+            AgentInfo = AgentInfoStub  # type: ignore
 
-    AgentInfo = AgentInfoStub  # type: ignore
-    ModelInfo = ModelInfoStub  # type: ignore
+        if ModelInfo is None:
+
+            class ModelInfoStub:  # type: ignore
+                """Stub for ModelInfo when harbor is not installed."""
+
+                def __init__(self, name: str, provider: str):
+                    self.name = name
+                    self.provider = provider
+
+            ModelInfo = ModelInfoStub  # type: ignore
 
 
 class SabreAgent(BaseInstalledAgent):
