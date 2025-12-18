@@ -19,56 +19,11 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
 
-if TYPE_CHECKING:
-    from harbor.agents.installed.base import BaseInstalledAgent
-    from harbor.models.agent.context import AgentContext
-    from harbor.models.exec import ExecInput
-    from harbor.models.trial.result import AgentInfo, ModelInfo
-
-# Import from harbor - these will be available when running in Harbor environment
-HARBOR_AVAILABLE = False
-try:
-    from harbor.agents.installed.base import BaseInstalledAgent, ExecInput
-    from harbor.models.agent.context import AgentContext
-    from harbor.models.trial.result import AgentInfo, ModelInfo
-
-    HARBOR_AVAILABLE = True
-except ImportError as e:
-    import sys
-
-    print(f"[sabre_agent] Harbor import failed: {e}, using stubs", file=sys.stderr)
-
-    class BaseInstalledAgentStub:
-        """Stub class for when harbor is not installed."""
-
-        def __init__(
-            self,
-            logs_dir: Path,
-            prompt_template_path: Path | str | None = None,
-            version: str | None = None,
-            *args,
-            **kwargs,
-        ):
-            self.logs_dir = logs_dir
-            self._version = version
-            self.model_name = kwargs.get("model_name")
-
-    BaseInstalledAgent = BaseInstalledAgentStub
-
-    class ExecInput:
-        """Stub for ExecInput when harbor is not installed."""
-
-        def __init__(self, command: str, timeout: int = 3600, **kwargs):
-            self.command = command
-            self.timeout = timeout
-            for k, v in kwargs.items():
-                setattr(self, k, v)
-
-    AgentContext = Any
-    AgentInfo = None
-    ModelInfo = None
+from harbor.agents.installed.base import BaseInstalledAgent
+from harbor.models.agent.context import AgentContext
+from harbor.models.exec import ExecInput
+from harbor.models.trial.result import AgentInfo, ModelInfo
 
 
 class SabreAgent(BaseInstalledAgent):
@@ -115,11 +70,6 @@ class SabreAgent(BaseInstalledAgent):
 
     def to_agent_info(self):
         """Return agent information for Harbor."""
-        if not HARBOR_AVAILABLE:
-            return None
-
-        from harbor.models.trial.result import AgentInfo, ModelInfo
-
         # SABRE uses OpenAI model from environment
         model_name = os.environ.get("OPENAI_MODEL", "gpt-4o")
         model_info = ModelInfo(name=model_name, provider="openai")
