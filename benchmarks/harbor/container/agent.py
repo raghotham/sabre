@@ -70,23 +70,41 @@ except ImportError as e:
     ExecInput = ExecInputStub  # type: ignore
     AgentContext = Any  # type: ignore
 
-    class AgentInfoStub:
-        """Stub for AgentInfo when harbor is not installed."""
+    # Import pydantic for stub classes
+    try:
+        from pydantic import BaseModel
 
-        def __init__(self, name: str, version: str, model_info: Any):
-            self.name = name
-            self.version = version
-            self.model_info = model_info
+        class AgentInfoStub(BaseModel):
+            """Stub for AgentInfo when harbor is not installed."""
+
+            name: str
+            version: str
+            model_info: Any
+
+        class ModelInfoStub(BaseModel):
+            """Stub for ModelInfo when harbor is not installed."""
+
+            name: str
+            provider: str
+
+    except ImportError:
+        # Fallback if pydantic not available
+        class AgentInfoStub:  # type: ignore
+            """Stub for AgentInfo when harbor is not installed."""
+
+            def __init__(self, name: str, version: str, model_info: Any):
+                self.name = name
+                self.version = version
+                self.model_info = model_info
+
+        class ModelInfoStub:  # type: ignore
+            """Stub for ModelInfo when harbor is not installed."""
+
+            def __init__(self, name: str, provider: str):
+                self.name = name
+                self.provider = provider
 
     AgentInfo = AgentInfoStub  # type: ignore
-
-    class ModelInfoStub:
-        """Stub for ModelInfo when harbor is not installed."""
-
-        def __init__(self, name: str, provider: str):
-            self.name = name
-            self.provider = provider
-
     ModelInfo = ModelInfoStub  # type: ignore
 
 

@@ -126,8 +126,11 @@ def run_harbor_benchmark(
 
     repo_root = get_repo_root()
 
-    # Build Harbor command - use harbor directly (installed via setup_benchmark.py)
+    # Build Harbor command - use uvx with local package
     cmd = [
+        "uvx",
+        "--with",
+        ".",
         "harbor",
         "run",
         "-d",
