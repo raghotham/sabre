@@ -134,7 +134,7 @@ def run_harbor_benchmark(
         "-d",
         dataset,
         "--agent-import-path",
-        "benchmarks.harbor.container:SabreAgent",
+        "benchmarks.harbor.container.agent:SabreAgent",
         "--env",
         "docker",
         "--ek",
