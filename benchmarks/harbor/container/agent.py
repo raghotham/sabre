@@ -1,18 +1,17 @@
 """
 SABRE Agent implementation for Harbor benchmarks.
 
-This agent communicates with a separately-running SABRE server via HTTP.
-The server must be started before running Harbor benchmarks.
+This agent installs SABRE in the Harbor container and runs it in command mode.
 
 Architecture:
-- SABRE server runs on host at http://host.docker.internal:8011
-- Harbor container executes this agent code
-- Agent creates session via POST /v1/sessions
-- Agent sends task via POST /v1/sessions/{id}/messages
-- Agent retrieves ATIF trace via GET /v1/sessions/{id}/atif
+- Container builds from task's Dockerfile (e.g., ubuntu:24.04)
+- install.sh installs SABRE and dependencies
+- SABRE runs in command mode: `uv run sabre "task description"`
+- SABRE executes commands inside the container's filesystem
+- Harbor's verifier checks results in the same container
 
 Usage:
-    uvx harbor run -d terminal-bench@2.0 --agent-import-path container:SabreAgent
+    uvx harbor run -d hello-world@head --agent-import-path container:SabreAgent
 """
 
 from __future__ import annotations
@@ -76,14 +75,12 @@ class SabreAgent(BaseInstalledAgent):
     """
     SABRE agent for Harbor benchmarks.
 
-    Communicates with a separately-running SABRE server via HTTP.
-    The server handles all LLM interactions and execution.
+    Uses the prebuilt sabre:latest Docker image and runs SABRE in command mode.
     """
 
     def __init__(
         self,
         logs_dir: Path,
-        server_url: str | None = None,
         version: str | None = None,
         *args,
         **kwargs,
@@ -93,12 +90,9 @@ class SabreAgent(BaseInstalledAgent):
 
         Args:
             logs_dir: Directory for storing logs
-            server_url: SABRE server URL (default: http://host.docker.internal:8011)
             version: Optional SABRE version identifier
         """
         super().__init__(logs_dir, version=version, *args, **kwargs)
-        self._server_url = server_url or os.environ.get("SABRE_SERVER_URL", "http://host.docker.internal:8011")
-        self._session_id: str | None = None
 
     @staticmethod
     def name() -> str:
@@ -108,6 +102,11 @@ class SabreAgent(BaseInstalledAgent):
     def version(self) -> str | None:
         """Return the agent version."""
         return self._version or "latest"
+
+    @property
+    def prebuilt_image_name(self) -> str | None:
+        """Use the prebuilt SABRE Docker image."""
+        return "sabre:latest"
 
     @classmethod
     def import_path(cls) -> str:
@@ -121,29 +120,9 @@ class SabreAgent(BaseInstalledAgent):
 
         from harbor.models.trial.result import AgentInfo, ModelInfo
 
-        # Get model info from server health endpoint
-        model_info = None
-        try:
-            import requests
-
-            response = requests.get(
-                f"{self._server_url}/v1/health",
-                timeout=5.0,
-                proxies={"http": None, "https": None},
-            )
-            if response.status_code == 200:
-                health_data = response.json()
-                if "model" in health_data:
-                    model = health_data["model"]
-                    # Parse provider from model name if present
-                    if "/" in model:
-                        provider, model_name = model.split("/", 1)
-                    else:
-                        provider = "openai"
-                        model_name = model
-                    model_info = ModelInfo(name=model_name, provider=provider)
-        except Exception:
-            pass
+        # SABRE uses OpenAI model from environment
+        model_name = os.environ.get("OPENAI_MODEL", "gpt-4o")
+        model_info = ModelInfo(name=model_name, provider="openai")
 
         return AgentInfo(
             name=self.name(),
@@ -156,14 +135,41 @@ class SabreAgent(BaseInstalledAgent):
         """Return path to the installation script."""
         return Path(__file__).parent / "install.sh"
 
+    async def setup(self, environment):
+        """Setup the agent in the environment, including copying SABRE source."""
+        # Copy SABRE source code to logs_dir so install.sh can access it
+        import shutil
+
+        sabre_source_dir = Path(__file__).parent.parent.parent.parent  # Go up to sabre repo root
+        target_dir = self.logs_dir / "sabre_source"
+
+        # Copy SABRE source
+        if sabre_source_dir.exists():
+            shutil.copytree(
+                sabre_source_dir,
+                target_dir,
+                symlinks=False,  # Don't copy symlinks, copy actual files
+                ignore=shutil.ignore_patterns(
+                    ".git",
+                    ".venv",
+                    "venv",
+                    "__pycache__",
+                    "*.pyc",
+                    "benchmarks",
+                    "jobs",
+                    ".pytest_cache",
+                    "tmp",
+                    "*.egg-info",
+                    "results",
+                ),
+            )
+
+        # Call parent setup which runs install.sh
+        await super().setup(environment)
+
     def create_run_agent_commands(self, instruction: str) -> list[ExecInput]:
         """
-        Create commands to run SABRE via HTTP API.
-
-        This creates a uv script that:
-        1. Creates a session via POST /v1/sessions
-        2. Sends the task message via POST /v1/sessions/{id}/messages
-        3. Saves session_id for later ATIF retrieval
+        Create commands to run SABRE in command mode.
 
         Args:
             instruction: The task description/prompt to send to SABRE
@@ -171,198 +177,114 @@ class SabreAgent(BaseInstalledAgent):
         Returns:
             List of ExecInput commands to execute
         """
-        # Create uv script that communicates with SABRE server
-        script = f'''#!/usr/bin/env -S uv run
-# /// script
-# requires-python = ">=3.11"
-# dependencies = [
-#     "requests>=2.31.0",
-# ]
-# ///
+        # Run SABRE in command mode using -m flag
+        # SABRE is installed at /tmp/sabre during setup
+        # The OPENAI_API_KEY environment variable is passed via env dict
+        # Execute from /app so files are created in the right place
 
-import json
-import os
-import sys
-import time
-import requests
+        # Prepend instruction to force SABRE to execute code and use available tools
+        # Guide it to use llm_call() for image analysis since chess tools aren't installed
+        prefixed_instruction = (
+            "CRITICAL: You MUST use <helpers> blocks with Python code to complete this task. "
+            "DO NOT respond conversationally or talk about what you would do. "
+            "\n\n"
+            "ENVIRONMENT:\n"
+            "- You are running in a Docker container with working directory /app\n"
+            "- Files like chess_board.png are already present in /app\n"
+            "- Use Bash.execute() to create output files in /app\n"
+            "- You do NOT have chess analysis tools installed (no stockfish, chess-tool, etc.)\n"
+            "\n\n"
+            "AVAILABLE TOOLS FOR THIS TASK:\n"
+            "- For image analysis: Use llm_call() to analyze images and extract information\n"
+            "- For file operations: Use Bash.execute() to read/write files\n"
+            "- Example: analyze_result = llm_call(['/app/chess_board.png'], 'What is the chess position in FEN notation?')\n"
+            "\n\n"
+            f"TASK: {instruction}\n"
+            "\n"
+            "Remember: The task REQUIRES you to execute code and create files - conversation alone will fail."
+        )
 
-# Configuration
-SERVER_URL = "{self._server_url}"
-LOGS_DIR = "{self.logs_dir}"
-SESSION_ID_FILE = os.path.join(LOGS_DIR, "session_id.txt")
-
-# Bypass proxy for host.docker.internal
-PROXIES = {{"http": None, "https": None}}
-
-def create_session():
-    """Create a new SABRE session."""
-    print("Creating SABRE session...", file=sys.stderr)
-    response = requests.post(
-        f"{{SERVER_URL}}/v1/sessions",
-        json={{}},
-        timeout=30.0,
-        proxies=PROXIES
-    )
-    response.raise_for_status()
-    data = response.json()
-    session_id = data["session_id"]
-    print(f"Created session: {{session_id}}", file=sys.stderr)
-
-    # Save session ID for ATIF retrieval
-    with open(SESSION_ID_FILE, "w") as f:
-        f.write(session_id)
-
-    return session_id
-
-def send_message(session_id, message):
-    """Send message to SABRE session and wait for completion."""
-    print(f"Sending task to session {{session_id}}...", file=sys.stderr)
-
-    # Stream the response
-    response = requests.post(
-        f"{{SERVER_URL}}/v1/sessions/{{session_id}}/messages",
-        json={{"message": message}},
-        timeout=3600.0,  # 1 hour timeout
-        stream=True,
-        proxies=PROXIES
-    )
-    response.raise_for_status()
-
-    # Process SSE stream
-    for line in response.iter_lines():
-        if not line:
-            continue
-
-        line = line.decode("utf-8")
-        if not line.startswith("data: "):
-            continue
-
-        data_str = line[6:]  # Remove "data: " prefix
-        if data_str == "[DONE]":
-            break
-
-        try:
-            event = json.loads(data_str)
-            event_type = event.get("type")
-
-            # Print tokens as they arrive
-            if event_type == "response_token":
-                token = event.get("data", {{}}).get("token", "")
-                print(token, end="", flush=True)
-            elif event_type == "complete":
-                print("\\n", file=sys.stderr)
-                print(f"Task completed successfully", file=sys.stderr)
-                return True
-            elif event_type == "error":
-                error_msg = event.get("data", {{}}).get("error_message", "Unknown error")
-                print(f"\\nError: {{error_msg}}", file=sys.stderr)
-                return False
-        except json.JSONDecodeError:
-            continue
-
-    return True
-
-def main():
-    # Task instruction
-    instruction = """{json.dumps(instruction)}"""
-
-    try:
-        # Create session
-        session_id = create_session()
-
-        # Send message
-        success = send_message(session_id, instruction)
-
-        if not success:
-            sys.exit(1)
-
-        print(f"\\nSession completed: {{session_id}}", file=sys.stderr)
-        sys.exit(0)
-
-    except Exception as e:
-        print(f"Error: {{e}}", file=sys.stderr)
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
-
-if __name__ == "__main__":
-    main()
-'''
-
-        # Write script to file
-        script_path = self.logs_dir / "run_sabre.py"
-        script_path.write_text(script)
-        script_path.chmod(0o755)
+        # Escape the instruction for shell - replace double quotes with escaped quotes
+        escaped_instruction = prefixed_instruction.replace('"', '\\"')
 
         return [
             ExecInput(
-                command="$HOME/.local/bin/uv run ./run_sabre.py",
+                command=f'$HOME/.local/bin/uv run --directory /tmp/sabre sabre -m "{escaped_instruction}" --export-atif 2>&1 || (echo "=== SABRE FAILED, checking server.log ===" && cat /root/.local/state/sabre/logs/server.log 2>/dev/null || echo "No server.log found")',
+                cwd="/app",  # Run from /app so Bash commands execute there
                 timeout=3600,  # 1 hour timeout
-            )
+                env={"OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", "")},  # Pass API key
+            ),
+            # Copy any PNG files from /app to logs directory for inspection
+            ExecInput(
+                command='cp /app/*.png /logs/agent/ 2>/dev/null || echo "No PNG files to copy"',
+                cwd="/app",
+                timeout=10,
+            ),
+            # Copy SABRE session directory to logs for debugging
+            # Sessions are at ~/.local/share/sabre/sessions/
+            ExecInput(
+                command='cp -r $HOME/.local/share/sabre/sessions /logs/agent/sabre_sessions 2>/dev/null || echo "No SABRE sessions to copy"',
+                cwd="/app",
+                timeout=30,
+            ),
         ]
 
     def populate_context_post_run(self, context: AgentContext) -> None:
         """
         Populate the agent context after execution.
 
-        This method retrieves the ATIF trace from the SABRE server.
+        SABRE writes ATIF traces to ~/.local/share/sabre/sessions/{session_id}/atif.json
+        when run with --export-atif flag.
 
         Args:
             context: The agent context to populate
         """
-        # Read session ID from file
-        session_id_file = self.logs_dir / "session_id.txt"
-        if not session_id_file.exists():
-            print(f"Session ID file not found: {session_id_file}")
-            context.n_input_tokens = 0
-            context.n_output_tokens = 0
-            context.n_cache_tokens = 0
-            context.cost_usd = None
-            return
+        # Try to find and parse ATIF file
+        from pathlib import Path
 
-        try:
-            session_id = session_id_file.read_text().strip()
-            print(f"Retrieved session ID: {session_id}")
-        except Exception as e:
-            print(f"Failed to read session ID: {e}")
-            context.n_input_tokens = 0
-            context.n_output_tokens = 0
-            context.n_cache_tokens = 0
-            context.cost_usd = None
-            return
+        # ATIF files are in ~/.local/share/sabre/sessions/{session_id}/atif.json
+        sabre_data_dir = Path.home() / ".local" / "share" / "sabre" / "sessions"
 
-        # Retrieve ATIF trace from server
-        try:
-            import requests
+        # Find the most recent session directory (SABRE creates timestamped session IDs)
+        if sabre_data_dir.exists():
+            session_dirs = sorted(sabre_data_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)
 
-            print(f"Retrieving ATIF trace from {self._server_url}/v1/sessions/{session_id}/atif")
-            response = requests.get(
-                f"{self._server_url}/v1/sessions/{session_id}/atif",
-                timeout=30.0,
-                proxies={"http": None, "https": None},
-            )
-            response.raise_for_status()
-            atif_data = response.json()
+            for session_dir in session_dirs:
+                atif_file = session_dir / "atif.json"
+                if atif_file.exists():
+                    try:
+                        atif_data = json.loads(atif_file.read_text())
 
-            # Write ATIF trajectory to file
-            trajectory_path = self.logs_dir / "trajectory.json"
-            with open(trajectory_path, "w") as f:
-                json.dump(atif_data, f, indent=2)
-            print(f"Wrote ATIF trajectory to {trajectory_path}")
+                        # Extract token counts from ATIF
+                        # ATIF format has usage data in the trajectory
+                        total_input_tokens = 0
+                        total_output_tokens = 0
+                        total_cache_tokens = 0
 
-            # Extract token counts from ATIF if available
-            final_metrics = atif_data.get("final_metrics", {})
-            context.n_input_tokens = final_metrics.get("total_prompt_tokens", 0)
-            context.n_output_tokens = final_metrics.get("total_completion_tokens", 0)
-            context.n_cache_tokens = final_metrics.get("total_cached_tokens", 0)
-            context.cost_usd = final_metrics.get("total_cost_usd")
+                        # Parse trajectory for usage data
+                        for step in atif_data.get("trajectory", []):
+                            usage = step.get("usage", {})
+                            total_input_tokens += usage.get("input_tokens", 0)
+                            total_output_tokens += usage.get("output_tokens", 0)
+                            # Cache tokens might be in cache_read_input_tokens or similar
+                            total_cache_tokens += usage.get("cache_read_input_tokens", 0)
 
-        except Exception as e:
-            print(f"Failed to retrieve ATIF trace: {e}")
-            import traceback
+                        context.n_input_tokens = total_input_tokens
+                        context.n_output_tokens = total_output_tokens
+                        context.n_cache_tokens = total_cache_tokens
+                        context.cost_usd = None  # Could calculate based on model pricing
 
-            traceback.print_exc()
-            context.n_input_tokens = 0
-            context.n_output_tokens = 0
-            context.n_cache_tokens = 0
-            context.cost_usd = None
+                        # Successfully parsed ATIF
+                        return
+
+                    except Exception as e:
+                        # Log error but continue - fall back to defaults
+                        import sys
+
+                        print(f"Warning: Could not parse ATIF file {atif_file}: {e}", file=sys.stderr)
+
+        # Fallback: set default values if ATIF not found or parsing failed
+        context.n_input_tokens = 0
+        context.n_output_tokens = 0
+        context.n_cache_tokens = 0
+        context.cost_usd = None

@@ -3,21 +3,22 @@
 SABRE Harbor Benchmark Setup and Prerequisites Checker.
 
 This script verifies that all prerequisites are met for running SABRE with Harbor:
-1. SABRE server is running (http://localhost:8011)
-2. Docker is installed and running
-3. Harbor CLI is installed and accessible
-4. Required environment variables are set
+1. Docker is installed and running
+2. Harbor CLI is installed and accessible (via uvx)
+3. uv is installed (for running Harbor)
+4. OPENAI_API_KEY is set
+
+Note: SABRE runs inside the Docker container in command mode, so no local
+SABRE server is required.
 
 Usage:
     uv run setup_benchmark.py
-    uv run setup_benchmark.py --test-server
     uv run setup_benchmark.py --quiet
 """
 
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "requests>=2.31.0",
 #     "rich>=13.7.0",
 # ]
 # ///
@@ -28,10 +29,8 @@ import shutil
 import subprocess
 import sys
 
-import requests
 from rich.console import Console
 from rich.panel import Panel
-from rich.table import Table
 
 console = Console()
 
@@ -46,7 +45,7 @@ class PrerequisiteChecker:
         self.checks_passed = 0
         self.checks_total = 0
 
-    def check_all(self, test_server: bool = False) -> bool:
+    def check_all(self) -> bool:
         """Run all prerequisite checks."""
         if not self.quiet:
             console.print(
@@ -58,7 +57,6 @@ class PrerequisiteChecker:
             console.print()
 
         # Run all checks
-        self.check_sabre_server(test_server)
         self.check_docker()
         self.check_harbor_cli()
         self.check_env_vars()
@@ -69,83 +67,12 @@ class PrerequisiteChecker:
 
         return len(self.errors) == 0
 
-    def check_sabre_server(self, test_connection: bool = False):
-        """Check if SABRE server is running."""
-        self.checks_total += 1
-        server_url = "http://localhost:8011"
-
-        if not self.quiet:
-            console.print("[bold]1. Checking SABRE Server...[/bold]")
-
-        try:
-            # Bypass proxy for localhost
-            response = requests.get(
-                f"{server_url}/v1/health",
-                timeout=5.0,
-                proxies={"http": None, "https": None},  # Disable proxy for localhost
-            )
-            if response.status_code == 200:
-                self.checks_passed += 1
-                if not self.quiet:
-                    health_data = response.json()
-                    console.print(f"   ✓ SABRE server running at {server_url}", style="green")
-                    console.print(f"   ✓ Status: {health_data.get('status', 'unknown')}", style="green")
-                    if "model" in health_data:
-                        console.print(f"   ✓ Model: {health_data['model']}", style="green")
-                    console.print()
-
-                # Optional: test full connection
-                if test_connection:
-                    self._test_server_connection(server_url)
-            else:
-                self.errors.append(f"SABRE server returned status {response.status_code}")
-                if not self.quiet:
-                    console.print(f"   ✗ Server returned status {response.status_code}", style="red")
-                    console.print()
-        except requests.exceptions.ConnectionError:
-            self.errors.append("SABRE server not running")
-            if not self.quiet:
-                console.print(f"   ✗ SABRE server not running at {server_url}", style="red")
-                console.print("   → Start it with: [cyan]uv run sabre-server[/cyan]", style="yellow")
-                console.print()
-        except Exception as e:
-            self.errors.append(f"Error connecting to SABRE server: {e}")
-            if not self.quiet:
-                console.print(f"   ✗ Error: {e}", style="red")
-                console.print()
-
-    def _test_server_connection(self, server_url: str):
-        """Test SABRE server with a simple message."""
-        if not self.quiet:
-            console.print("   [dim]Testing server connection...[/dim]")
-
-        try:
-            response = requests.post(
-                f"{server_url}/v1/messages",
-                json={
-                    "message": "Hello SABRE! This is a test.",
-                    "stream": False,
-                },
-                timeout=30.0,
-                proxies={"http": None, "https": None},
-            )
-            if response.status_code == 200:
-                console.print("   ✓ Server connection test passed", style="green")
-            else:
-                self.warnings.append(f"Server test returned status {response.status_code}")
-                console.print(f"   ⚠ Test returned status {response.status_code}", style="yellow")
-        except Exception as e:
-            self.warnings.append(f"Server connection test failed: {e}")
-            console.print(f"   ⚠ Connection test failed: {e}", style="yellow")
-
-        console.print()
-
     def check_docker(self):
         """Check if Docker is installed and running."""
         self.checks_total += 1
 
         if not self.quiet:
-            console.print("[bold]2. Checking Docker...[/bold]")
+            console.print("[bold]1. Checking Docker...[/bold]")
 
         # Check if docker command exists
         docker_path = shutil.which("docker")
@@ -203,7 +130,7 @@ class PrerequisiteChecker:
         self.checks_total += 1
 
         if not self.quiet:
-            console.print("[bold]3. Checking Harbor CLI...[/bold]")
+            console.print("[bold]2. Checking Harbor CLI...[/bold]")
 
         # Try uvx harbor first (recommended)
         try:
@@ -262,37 +189,35 @@ class PrerequisiteChecker:
                 console.print()
 
     def check_env_vars(self):
-        """Check environment variables (all optional - SABRE server handles auth)."""
+        """Check environment variables."""
         self.checks_total += 1
 
         if not self.quiet:
-            console.print("[bold]4. Checking Environment Variables...[/bold]")
+            console.print("[bold]3. Checking Environment Variables...[/bold]")
 
-        # All optional - SABRE server already has OPENAI_API_KEY
-        optional_vars = {
-            "SABRE_SERVER_URL": "SABRE server URL (default: http://localhost:8011)",
-            "LOG_LEVEL": "Logging level (default: WARNING)",
-        }
+        # Check for OPENAI_API_KEY (required)
+        api_key = os.getenv("OPENAI_API_KEY")
 
-        table = Table(show_header=True, header_style="bold cyan")
-        table.add_column("Variable", style="cyan")
-        table.add_column("Status", justify="center")
-        table.add_column("Value/Description")
-
-        # Check optional
-        for var, desc in optional_vars.items():
-            value = os.getenv(var)
-            if value:
-                table.add_row(var, "✓", value, style="green")
-            else:
-                table.add_row(var, "-", f"Optional: {desc}", style="dim")
-
-        if not self.quiet:
-            console.print(table)
-            console.print()
-
-        # Always pass - all vars are optional
-        self.checks_passed += 1
+        if api_key:
+            self.checks_passed += 1
+            if not self.quiet:
+                # Mask the API key for security
+                masked_key = api_key[:10] + "..." + api_key[-4:] if len(api_key) > 14 else "***"
+                console.print(f"   ✓ OPENAI_API_KEY is set ({masked_key})", style="green")
+                console.print()
+        else:
+            self.errors.append("OPENAI_API_KEY not set")
+            if not self.quiet:
+                console.print("   ✗ OPENAI_API_KEY not set", style="red")
+                console.print(
+                    "   → Set it with: [cyan]export OPENAI_API_KEY=your-key-here[/cyan]",
+                    style="yellow",
+                )
+                console.print(
+                    "   → Or pass it when running: [cyan]--ek OPENAI_API_KEY=$OPENAI_API_KEY[/cyan]",
+                    style="yellow",
+                )
+                console.print()
 
     def _display_summary(self):
         """Display summary of all checks."""
@@ -321,11 +246,6 @@ def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Check prerequisites for SABRE Harbor benchmark")
     parser.add_argument(
-        "--test-server",
-        action="store_true",
-        help="Test SABRE server connection with a sample message",
-    )
-    parser.add_argument(
         "--quiet",
         "-q",
         action="store_true",
@@ -334,8 +254,24 @@ def main():
 
     args = parser.parse_args()
 
+    # Ensure tmp/harbor directory exists
+    from pathlib import Path
+
+    repo_root = Path(__file__).parent.parent.parent
+    tmp_harbor = repo_root / "tmp" / "harbor"
+    tmp_harbor.mkdir(parents=True, exist_ok=True)
+
+    results_dir = repo_root / "benchmarks" / "harbor" / "results"
+    results_dir.mkdir(parents=True, exist_ok=True)
+
     checker = PrerequisiteChecker(quiet=args.quiet)
-    success = checker.check_all(test_server=args.test_server)
+    success = checker.check_all()
+
+    if success and not args.quiet:
+        console.print()
+        console.print("[dim]Output directories created:[/dim]")
+        console.print(f"  [cyan]Jobs:[/cyan] {tmp_harbor}")
+        console.print(f"  [cyan]Results:[/cyan] {results_dir}")
 
     sys.exit(0 if success else 1)
 

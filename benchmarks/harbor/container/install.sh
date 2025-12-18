@@ -2,41 +2,51 @@
 #
 # SABRE Agent Installation Script for Harbor
 #
-# This script installs uv (universal Python package installer).
-# The agent.py is a uv script with inline dependencies.
+# Installs SABRE and its dependencies in the Harbor container
 #
 
 set -euo pipefail
 
 echo "==================================================================="
-echo "SABRE Agent Setup for Harbor"
+echo "Installing SABRE for Harbor"
 echo "==================================================================="
 echo ""
 
-# Install curl if not available
-echo "[1/3] Installing curl..."
-if ! command -v curl &> /dev/null; then
-    apt-get update -qq > /dev/null 2>&1
-    apt-get install -y -qq curl > /dev/null 2>&1
-    echo "✓ curl installed"
-else
-    echo "✓ curl already installed"
-fi
+# Install system dependencies
+echo "[1/5] Installing system dependencies..."
+apt-get update -qq > /dev/null 2>&1
+apt-get install -y -qq curl git > /dev/null 2>&1
+echo "✓ System dependencies installed"
 
 # Install uv
-echo "[2/3] Installing uv..."
+echo "[2/5] Installing uv..."
 curl -LsSf https://astral.sh/uv/install.sh | sh > /dev/null 2>&1
+export PATH="$HOME/.local/bin:$PATH"
 echo "✓ uv installed"
 
-echo "[3/3] Verifying installation..."
-export PATH="$HOME/.local/bin:$PATH"
-uv --version
+# Copy SABRE source from host (mounted at /logs/agent)
+echo "[3/5] Installing SABRE..."
+if [ -d "/logs/agent/sabre_source" ]; then
+    # SABRE source was copied to logs_dir by agent.py
+    cp -r /logs/agent/sabre_source /tmp/sabre
+    cd /tmp/sabre
+    uv sync > /dev/null 2>&1
+    echo "✓ SABRE installed from host"
+else
+    echo "✗ SABRE source not found at /logs/agent/sabre_source"
+    exit 1
+fi
 
+# Install Playwright for Web helper
+echo "[4/5] Installing Playwright..."
+# Install in SABRE's uv environment (not via uvx)
+cd /tmp/sabre
+uv run playwright install chromium --only-shell --with-deps > /dev/null 2>&1
+echo "✓ Playwright installed"
+
+echo "[5/5] Verifying installation..."
+uv --version
 echo ""
 echo "==================================================================="
-echo "SABRE agent setup complete!"
-echo ""
-echo "Note: This agent communicates with a SABRE server running on the host."
-echo "      Ensure the server is running at: http://host.docker.internal:8011"
-echo "      Start with: uv run sabre-server"
+echo "SABRE installation complete!"
 echo "==================================================================="

@@ -62,49 +62,21 @@ Use `uv run sabre --clean` to remove all stored data.
 
 ## Running Benchmarks
 
-SABRE includes benchmark infrastructure for evaluating performance against standard LLM benchmarks like DataSciBench.
+See [benchmarks/README.md](benchmarks/README.md) for complete benchmark documentation.
 
-### Setup
-
-```bash
-# Create HuggingFace token file (optional but recommended)
-echo "your_hf_token_here" > ~/.hf/key
-
-# Run the setup script (requires Python 3.11)
-python benchmarks/DataSciBench/setup_benchmark.py
-```
-
-The setup script automatically:
-- Clones DataSciBench repository
-- Creates Python 3.11 virtual environment
-- Installs MetaGPT and all dependencies
-- Downloads ground truth data from HuggingFace (if `~/.hf/key` exists)
-
-### Run Benchmarks
-
-The `run_benchmark.py` wrapper:
-- Runs benchmark tasks with compatibility patches
-- Evaluates outputs against ground truth
-- Stores results in `benchmarks/DataSciBench/results/`
-- Falls back to downloading ground truth if missing (using `~/.hf/key`)
+### Quick Start - Harbor (Recommended)
 
 ```bash
-# Start SABRE server (required for SABRE benchmarks)
-uv run sabre-server
+# Check prerequisites
+./benchmarks/harbor/setup_benchmark.py
 
-# Run baseline benchmark (gpt-4o-mini via OpenAI)
-OPENAI_API_KEY=`cat ~/.openai/key` python benchmarks/DataSciBench/run_benchmark.py \
-  --task_id csv_excel_0 \
-  --config benchmarks/DataSciBench/configs/config_gpt4o_baseline.yaml \
-  --data_type csv \
-  --max_runs 1
-
-# Run SABRE benchmark (gpt-4o via localhost:8011)
-OPENAI_API_KEY=`cat ~/.openai/key` python benchmarks/DataSciBench/run_benchmark.py \
-  --task_id csv_excel_0 \
-  --config benchmarks/DataSciBench/configs/config_sabre.yaml \
-  --data_type csv \
-  --max_runs 1
+# Run hello-world example
+export OPENAI_API_KEY=$(cat ~/.openai/key)
+cd benchmarks/harbor
+uvx harbor run -d hello-world@head \
+  --agent-import-path container:SabreAgent \
+  --env docker \
+  --ek OPENAI_API_KEY=$OPENAI_API_KEY
 ```
 
-Results are stored in `benchmarks/DataSciBench/results/{config_name}/{task_id}/` with evaluation scores, execution logs, and output files.
+See [benchmarks/harbor/README.md](benchmarks/harbor/README.md) for detailed Harbor documentation.

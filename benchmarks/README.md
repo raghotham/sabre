@@ -2,9 +2,15 @@
 
 This directory contains benchmark implementations for evaluating SABRE's performance against standard LLM agent benchmarks.
 
+## Available Benchmarks
+
+- **[Harbor](harbor/README.md)** (Recommended) - Containerized benchmark framework supporting Terminal-Bench and other datasets
+- **[k8s-ai-bench](k8s-ai-bench/README.md)** - Kubernetes task benchmark using MCP kubectl-ai tools
+- **[DataSciBench](DataSciBench/)** - Data science benchmark suite (standalone)
+
 ## Benchmark Structure
 
-Each benchmark should follow this standardized structure:
+Standalone benchmarks follow this standardized structure:
 
 ```
 benchmarks/
@@ -22,7 +28,7 @@ benchmarks/
 
 ## Adding a New Benchmark
 
-To add a new benchmark, create a folder in `benchmarks/` with the following required files:
+To add a new standalone benchmark, create a folder in `benchmarks/` with the following required files:
 
 ### 1. `setup_<benchmark>.py`
 
@@ -127,9 +133,11 @@ Benchmark-specific documentation:
 - Expected results format
 - Known issues or limitations
 
-## Example: DataSciBench
+## Examples
 
-See `benchmarks/DataSciBench/` for a complete reference implementation:
+### DataSciBench
+
+See `benchmarks/DataSciBench/` for a complete standalone benchmark implementation:
 
 ```bash
 # Setup
