@@ -9,6 +9,7 @@ import datetime
 import json
 import logging
 import os
+import platform
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -233,7 +234,17 @@ async def check_playwright_installation():
             raise RuntimeError("Could not determine required chromium version")
 
         # Check if chromium_headless_shell is installed
-        playwright_cache = Path.home() / "Library" / "Caches" / "ms-playwright"
+        # Try platform-specific paths
+        system = platform.system()
+        if system == "Darwin":  # macOS
+            playwright_cache = Path.home() / "Library" / "Caches" / "ms-playwright"
+        elif system == "Linux":
+            playwright_cache = Path.home() / ".cache" / "ms-playwright"
+        elif system == "Windows":
+            playwright_cache = Path.home() / "AppData" / "Local" / "ms-playwright"
+        else:
+            playwright_cache = Path.home() / ".cache" / "ms-playwright"  # Default to Linux path
+
         headless_dir = playwright_cache / f"chromium_headless_shell-{chromium_version}"
 
         if not headless_dir.exists():

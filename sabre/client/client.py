@@ -468,7 +468,7 @@ class Client:
             except asyncio.CancelledError:
                 pass
 
-    async def run_once(self, message: str):
+    async def run_once(self, message: str, export_atif: bool = False):
         """Run client in non-interactive mode with a single message"""
         try:
             async with httpx.AsyncClient() as client:
@@ -481,6 +481,10 @@ class Client:
                 # Send message
                 await self.send_message(client, message)
 
+                # Export ATIF if requested
+                if export_atif and self.conversation_id:
+                    await self._export_atif(client)
+
         except Exception as e:
             escaped_error = self.tui.html_escape(str(e))
             self.tui.print(f'<style fg="ansired">Error:</style> {escaped_error}')
@@ -488,6 +492,26 @@ class Client:
             return 1
 
         return 0
+
+    async def _export_atif(self, client: httpx.AsyncClient):
+        """Request ATIF export from server"""
+        try:
+            response = await client.get(f"{self.server_url}/v1/sessions/{self.conversation_id}/atif", timeout=10.0)
+            if response.status_code == 200:
+                atif_data = response.json()
+                # ATIF is returned as JSON, we can optionally save it
+                from sabre.common.paths import get_data_dir
+
+                data_dir = get_data_dir()
+                sessions_dir = data_dir / "sessions" / self.conversation_id
+                sessions_dir.mkdir(parents=True, exist_ok=True)
+                atif_path = sessions_dir / "atif.json"
+                atif_path.write_text(json.dumps(atif_data, indent=2))
+                self.tui.print(f'\n<style fg="ansigreen">ATIF exported to: {atif_path}</style>')
+            else:
+                logger.warning(f"ATIF export failed: {response.status_code}")
+        except Exception as e:
+            logger.warning(f"Could not export ATIF: {e}")
 
     async def run(self):
         """Main client loop"""
@@ -570,7 +594,7 @@ class Client:
         return 0
 
 
-async def main(message: str | None = None):
+async def main(message: str | None = None, export_atif: bool = False):
     """Entry point for client"""
     import argparse
     from sabre.common.paths import get_logs_dir, ensure_dirs
@@ -580,9 +604,11 @@ async def main(message: str | None = None):
         parser = argparse.ArgumentParser(description="SABRE Client")
         parser.add_argument("message", nargs="?", help="Message to send (non-interactive mode)")
         parser.add_argument("--port", default=os.getenv("PORT", "8011"), help="Server port")
+        parser.add_argument("--export-atif", action="store_true", help="Export ATIF trace after execution")
         args = parser.parse_args()
         message = args.message
         port = args.port
+        export_atif = args.export_atif
     else:
         # Message provided programmatically (from CLI --message flag)
         port = os.getenv("PORT", "8011")
@@ -608,7 +634,7 @@ async def main(message: str | None = None):
 
     # If message provided, run in non-interactive mode
     if message:
-        return await client.run_once(message)
+        return await client.run_once(message, export_atif=export_atif)
     else:
         return await client.run()
 
