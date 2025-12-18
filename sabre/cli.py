@@ -232,11 +232,11 @@ def cleanup(force: bool = False):
         return 1
 
 
-async def run_client(message: str | None = None):
+async def run_client(message: str | None = None, export_atif: bool = False):
     """Run the client, optionally with a single message (script mode)"""
     from sabre.client.client import main
 
-    return await main(message)
+    return await main(message, export_atif=export_atif)
 
 
 def mcp_list():
@@ -328,6 +328,7 @@ Examples:
 
     # Script mode
     parser.add_argument("-m", "--message", type=str, help="Run single message in script mode (non-interactive)")
+    parser.add_argument("--export-atif", action="store_true", help="Export ATIF trace after execution")
 
     # Server management
     parser.add_argument("--stop", action="store_true", help="Stop the running server")
@@ -375,7 +376,7 @@ Examples:
         server_process = start_server()
 
         # Run client (with optional message for script mode)
-        exit_code = asyncio.run(run_client(args.message))
+        exit_code = asyncio.run(run_client(args.message, export_atif=args.export_atif))
 
         return exit_code
 

@@ -24,10 +24,15 @@ EXPOSE 8011
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8011/health')"
 
-# Run server
+# Flexible entrypoint for both server and CLI modes
 # Required environment variables (pass at runtime):
 #   OPENAI_API_KEY - Your OpenAI API key (required)
 #   OPENAI_MODEL   - Model to use (optional, default: gpt-4o)
 #   OPENAI_BASE_URL - Custom API endpoint (optional)
 #   PORT           - Server port (optional, default: 8011)
-CMD ["uv", "run", "sabre-server"]
+#
+# Usage:
+#   Server mode (default):  docker run sabre:latest
+#   CLI mode:              docker run sabre:latest sabre "your task"
+ENTRYPOINT ["uv", "run"]
+CMD ["sabre-server"]
