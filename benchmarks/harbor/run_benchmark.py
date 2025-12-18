@@ -127,8 +127,14 @@ def run_harbor_benchmark(
     repo_root = get_repo_root()
 
     # Build Harbor command
+    # Use "uv run --with harbor --with ." to install harbor and the container package
     cmd = [
-        "uvx",
+        "uv",
+        "run",
+        "--with",
+        "harbor",
+        "--with",
+        ".",
         "harbor",
         "run",
         "-d",
@@ -173,11 +179,14 @@ def run_harbor_benchmark(
 
     console.print()
 
-    # Run Harbor from benchmarks/harbor directory (so container:SabreAgent import works)
+    # Run Harbor from benchmarks/harbor directory
+    # The --with . flag in the command ensures container package is available
+    harbor_dir = repo_root / "benchmarks" / "harbor"
+
     try:
         result = subprocess.run(
             cmd,
-            cwd=repo_root / "benchmarks" / "harbor",
+            cwd=harbor_dir,
             env={**os.environ},
         )
 
