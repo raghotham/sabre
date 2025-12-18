@@ -63,20 +63,3 @@ Use `uv run sabre --clean` to remove all stored data.
 ## Running Benchmarks
 
 See [benchmarks/README.md](benchmarks/README.md) for complete benchmark documentation.
-
-### Quick Start - Harbor (Recommended)
-
-```bash
-# Check prerequisites
-./benchmarks/harbor/setup_benchmark.py
-
-# Run hello-world example
-export OPENAI_API_KEY=$(cat ~/.openai/key)
-cd benchmarks/harbor
-uvx harbor run -d hello-world@head \
-  --agent-import-path container:SabreAgent \
-  --env docker \
-  --ek OPENAI_API_KEY=$OPENAI_API_KEY
-```
-
-See [benchmarks/harbor/README.md](benchmarks/harbor/README.md) for detailed Harbor documentation.
