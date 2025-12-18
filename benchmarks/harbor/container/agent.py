@@ -84,30 +84,33 @@ class SabreAgent(BaseInstalledAgent):
         """Setup the agent in the environment, including copying SABRE source."""
         # Copy SABRE source code to logs_dir so install.sh can access it
         import shutil
+        import subprocess
 
         sabre_source_dir = Path(__file__).parent.parent.parent.parent  # Go up to sabre repo root
         target_dir = self.logs_dir / "sabre_source"
+        target_dir.mkdir(parents=True, exist_ok=True)
 
-        # Copy SABRE source
-        if sabre_source_dir.exists():
-            shutil.copytree(
-                sabre_source_dir,
-                target_dir,
-                symlinks=False,  # Don't copy symlinks, copy actual files
-                ignore=shutil.ignore_patterns(
-                    ".git",
-                    ".venv",
-                    "venv",
-                    "__pycache__",
-                    "*.pyc",
-                    "benchmarks",
-                    "jobs",
-                    ".pytest_cache",
-                    "tmp",
-                    "*.egg-info",
-                    "results",
-                ),
-            )
+        # Get list of git-tracked files, excluding benchmarks/
+        result = subprocess.run(
+            ["git", "ls-files"],
+            cwd=sabre_source_dir,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        for file_path in result.stdout.strip().split("\n"):
+            if file_path.startswith("benchmarks/"):
+                continue
+
+            src = sabre_source_dir / file_path
+            dst = target_dir / file_path
+
+            # Create parent directory if needed
+            dst.parent.mkdir(parents=True, exist_ok=True)
+
+            # Copy file
+            shutil.copy2(src, dst)
 
         # Call parent setup which runs install.sh
         await super().setup(environment)
