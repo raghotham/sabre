@@ -126,64 +126,58 @@ class PrerequisiteChecker:
                 console.print()
 
     def check_harbor_cli(self):
-        """Check if Harbor CLI is installed."""
+        """Check if Harbor CLI is installed, and install if needed."""
         self.checks_total += 1
 
         if not self.quiet:
             console.print("[bold]2. Checking Harbor CLI...[/bold]")
 
-        # Try uvx harbor first (recommended)
-        try:
-            result = subprocess.run(
-                ["uvx", "harbor", "--help"],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            if result.returncode == 0:
-                self.checks_passed += 1
-                if not self.quiet:
-                    console.print("   ✓ Harbor accessible via uvx", style="green")
-                    console.print("   ✓ Run with: [cyan]uvx harbor run[/cyan]", style="green")
-                    console.print()
-                return
-        except Exception:
-            pass
-
-        # Fall back to checking if harbor is in PATH
+        # Check if harbor is already in PATH
         harbor_path = shutil.which("harbor")
-        if not harbor_path:
-            self.errors.append("Harbor CLI not found")
-            if not self.quiet:
-                console.print("   ✗ Harbor CLI not found", style="red")
-                console.print(
-                    "   → Install: [cyan]pip install harbor-bench[/cyan] or [cyan]uv pip install harbor-bench[/cyan]",
-                    style="yellow",
+        if harbor_path:
+            try:
+                result = subprocess.run(
+                    [harbor_path, "--version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
                 )
-                console.print("   → Or use: [cyan]uvx harbor[/cyan] (no install needed)", style="yellow")
-                console.print()
-            return
+                if result.returncode == 0:
+                    self.checks_passed += 1
+                    if not self.quiet:
+                        version = result.stdout.strip()
+                        console.print(f"   ✓ Harbor installed at {harbor_path}", style="green")
+                        console.print(f"   ✓ Version: {version}", style="green")
+                        console.print()
+                    return
+            except Exception:
+                pass
 
-        # Harbor is in PATH - test it
+        # Harbor not found - install it
+        if not self.quiet:
+            console.print("   ⚠ Harbor not found in PATH", style="yellow")
+            console.print("   → Installing Harbor via uv pip...", style="cyan")
+
         try:
             result = subprocess.run(
-                [harbor_path, "--help"],
+                ["uv", "pip", "install", "harbor"],
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=120,
             )
             if result.returncode == 0:
                 self.checks_passed += 1
                 if not self.quiet:
-                    console.print(f"   ✓ Harbor installed at {harbor_path}", style="green")
+                    console.print("   ✓ Harbor installed successfully", style="green")
                     console.print()
             else:
-                self.warnings.append("Harbor executable found but failed to run")
+                self.errors.append(f"Failed to install Harbor: {result.stderr}")
                 if not self.quiet:
-                    console.print("   ⚠ Harbor found but failed to run", style="yellow")
+                    console.print("   ✗ Failed to install Harbor", style="red")
+                    console.print(f"   Error: {result.stderr}", style="red")
                     console.print()
         except Exception as e:
-            self.errors.append(f"Error checking Harbor: {e}")
+            self.errors.append(f"Error installing Harbor: {e}")
             if not self.quiet:
                 console.print(f"   ✗ Error: {e}", style="red")
                 console.print()

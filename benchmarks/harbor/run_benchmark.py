@@ -126,15 +126,8 @@ def run_harbor_benchmark(
 
     repo_root = get_repo_root()
 
-    # Build Harbor command
-    # Use "uv run --with harbor --with ." to install harbor and the container package
+    # Build Harbor command - use harbor directly (installed via setup_benchmark.py)
     cmd = [
-        "uv",
-        "run",
-        "--with",
-        "harbor",
-        "--with",
-        ".",
         "harbor",
         "run",
         "-d",

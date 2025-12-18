@@ -19,11 +19,75 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
-from harbor.agents.installed.base import BaseInstalledAgent
-from harbor.models.agent.context import AgentContext
-from harbor.models.exec import ExecInput
-from harbor.models.trial.result import AgentInfo, ModelInfo
+if TYPE_CHECKING:
+    from harbor.agents.installed.base import BaseInstalledAgent
+    from harbor.models.agent.context import AgentContext
+    from harbor.models.exec import ExecInput
+    from harbor.models.trial.result import AgentInfo, ModelInfo
+
+# Import from harbor - these will be available when running in Harbor environment
+HARBOR_AVAILABLE = False
+try:
+    from harbor.agents.installed.base import BaseInstalledAgent
+    from harbor.models.agent.context import AgentContext
+    from harbor.models.exec import ExecInput
+    from harbor.models.trial.result import AgentInfo, ModelInfo
+
+    HARBOR_AVAILABLE = True
+except ImportError as e:
+    import sys
+
+    print(f"[sabre_agent] Harbor import failed: {e}, using stubs", file=sys.stderr)
+
+    class BaseInstalledAgentStub:
+        """Stub class for when harbor is not installed."""
+
+        def __init__(
+            self,
+            logs_dir: Path,
+            prompt_template_path: Path | str | None = None,
+            version: str | None = None,
+            *args,
+            **kwargs,
+        ):
+            self.logs_dir = logs_dir
+            self._version = version
+            self.model_name = kwargs.get("model_name")
+
+    BaseInstalledAgent = BaseInstalledAgentStub  # type: ignore
+
+    class ExecInputStub:
+        """Stub for ExecInput when harbor is not installed."""
+
+        def __init__(self, command: str, timeout: int = 3600, **kwargs):
+            self.command = command
+            self.timeout = timeout
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+
+    ExecInput = ExecInputStub  # type: ignore
+    AgentContext = Any  # type: ignore
+
+    class AgentInfoStub:
+        """Stub for AgentInfo when harbor is not installed."""
+
+        def __init__(self, name: str, version: str, model_info: Any):
+            self.name = name
+            self.version = version
+            self.model_info = model_info
+
+    AgentInfo = AgentInfoStub  # type: ignore
+
+    class ModelInfoStub:
+        """Stub for ModelInfo when harbor is not installed."""
+
+        def __init__(self, name: str, provider: str):
+            self.name = name
+            self.provider = provider
+
+    ModelInfo = ModelInfoStub  # type: ignore
 
 
 class SabreAgent(BaseInstalledAgent):
