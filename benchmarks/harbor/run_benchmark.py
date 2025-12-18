@@ -134,7 +134,7 @@ def run_harbor_benchmark(
         "-d",
         dataset,
         "--agent-import-path",
-        "benchmarks.harbor.container.agent:SabreAgent",
+        "container:SabreAgent",
         "--env",
         "docker",
         "--ek",
@@ -169,15 +169,15 @@ def run_harbor_benchmark(
         # Mask API key in debug output
         debug_cmd = [part if not part.startswith("OPENAI_API_KEY=") else "OPENAI_API_KEY=***" for part in cmd]
         console.print(f"\n[dim]Command:[/dim] {' '.join(debug_cmd)}")
-        console.print(f"[dim]Working directory:[/dim] {repo_root}")
+        console.print(f"[dim]Working directory:[/dim] {repo_root / 'benchmarks' / 'harbor'}")
 
     console.print()
 
-    # Run Harbor from repo root (so benchmarks.harbor.container import works)
+    # Run Harbor from benchmarks/harbor directory (so container:SabreAgent import works)
     try:
         result = subprocess.run(
             cmd,
-            cwd=repo_root,
+            cwd=repo_root / "benchmarks" / "harbor",
             env={**os.environ},
         )
 
