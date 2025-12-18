@@ -77,8 +77,13 @@ except ImportError:
             self.command = command
             self.timeout = timeout
             self.timeout_sec = timeout  # Harbor expects timeout_sec attribute
+            # Set default values for commonly expected attributes
+            self.cwd = kwargs.get("cwd", None)
+            self.env = kwargs.get("env", None)
+            # Handle any additional kwargs
             for k, v in kwargs.items():
-                setattr(self, k, v)
+                if k not in ("cwd", "env"):  # Skip already handled
+                    setattr(self, k, v)
 
     ExecInput = ExecInputStub  # type: ignore
 
