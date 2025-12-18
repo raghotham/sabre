@@ -76,6 +76,7 @@ except ImportError:
         def __init__(self, command: str, timeout: int = 3600, **kwargs):
             self.command = command
             self.timeout = timeout
+            self.timeout_sec = timeout  # Harbor expects timeout_sec attribute
             for k, v in kwargs.items():
                 setattr(self, k, v)
 
