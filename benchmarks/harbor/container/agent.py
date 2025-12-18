@@ -30,7 +30,7 @@ class SabreAgent(BaseInstalledAgent):
     """
     SABRE agent for Harbor benchmarks.
 
-    Uses the prebuilt sabre:latest Docker image and runs SABRE in command mode.
+    Installs SABRE from source in the container and runs it in command mode.
     """
 
     def __init__(
@@ -57,11 +57,6 @@ class SabreAgent(BaseInstalledAgent):
     def version(self) -> str | None:
         """Return the agent version."""
         return self._version or "latest"
-
-    @property
-    def prebuilt_image_name(self) -> str | None:
-        """Use the prebuilt SABRE Docker image."""
-        return "sabre:latest"
 
     @classmethod
     def import_path(cls) -> str:
