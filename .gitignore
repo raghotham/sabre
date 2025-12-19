@@ -22,7 +22,8 @@ node_modules/
 playwright.config.js
 tmp/
 
-# Benchmark results
+# Benchmark outputs
+jobs/
 benchmarks/harbor/results/
 
 # Next.js (ui)
