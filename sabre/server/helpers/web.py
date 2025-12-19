@@ -12,17 +12,36 @@ import logging
 import re
 import unicodedata
 import warnings
+import base64
+import requests
+import io
+import concurrent.futures
 from typing import Any
+from pathlib import Path
+from urllib.parse import urlparse
 from markdownify import MarkdownConverter
 from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
+
+from sabre.server.helpers.browser import BrowserHelper
+from sabre.server.helpers.llm_call import run_async_from_sync
+from sabre.common.execution_context import get_execution_context
+from sabre.common.paths import get_session_files_dir
+from sabre.common.models.messages import Content, ImageContent, TextContent
+from sabre.common.models import SearchResult
+
+# PyPDF2 is optional - imported where needed
+try:
+    import PyPDF2
+
+    PYPDF2_AVAILABLE = True
+except ImportError:
+    PYPDF2_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
 
 async def _get_browser():
     """Get the browser helper instance for the current event loop."""
-    from sabre.server.helpers.browser import BrowserHelper
-
     return await BrowserHelper.get_instance()
 
 
@@ -83,7 +102,7 @@ class VerboseConverter(MarkdownConverter):
 
 def download_csv(url: str) -> str:
     """
-    Download CSV file from URL and return path to temp file.
+    Download CSV file from URL and return path to file in session directory.
 
     Handles SSL properly. Use with pd.read_csv() to avoid SSL certificate errors.
 
@@ -95,12 +114,25 @@ def download_csv(url: str) -> str:
         url: URL to CSV file
 
     Returns:
-        Path to downloaded temporary file (string)
+        Path to downloaded file in session directory (string)
     """
-    import requests
-    import tempfile
-
     logger.info(f"Downloading CSV from: {url}")
+
+    # Get session context
+    ctx = get_execution_context()
+    if not ctx or not ctx.session_id:
+        raise RuntimeError("download_csv() requires execution context with session_id")
+
+    # Extract filename from URL, or use default
+    parsed = urlparse(url)
+    filename = Path(parsed.path).name
+    if not filename or not filename.endswith(".csv"):
+        filename = "downloaded.csv"
+
+    # Get session files directory
+    files_dir = get_session_files_dir(ctx.session_id)
+    files_dir.mkdir(parents=True, exist_ok=True)
+    file_path = files_dir / filename
 
     # Set a proper User-Agent to avoid 403 Forbidden errors
     headers = {
@@ -111,16 +143,14 @@ def download_csv(url: str) -> str:
         response = requests.get(url, timeout=30, headers=headers)
         response.raise_for_status()
 
-        # Save to temporary file
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as tmp:
-            tmp.write(response.text)
-            tmp_path = tmp.name
+        # Save to session files directory
+        file_path.write_text(response.text)
 
-        logger.info(f"Downloaded CSV to: {tmp_path}")
-        print(f"Downloaded CSV from {url}")
-        print(f"Saved to: {tmp_path}")
+        logger.info(f"Downloaded CSV to: {file_path}")
+        print(f"[download_csv] Downloaded: {url}")
+        print(f"[download_csv] Saved to: {file_path}")
 
-        return tmp_path
+        return str(file_path)
     except Exception as e:
         error_msg = f"ERROR: Failed to download CSV from {url}: {e}"
         logger.error(error_msg)
@@ -160,7 +190,6 @@ def download(urls_or_results: Any, max_urls: int = 10) -> list:
         pages = download(["https://example.com"])
         info = llm_call(pages, "extract key facts")
     """
-    from sabre.server.helpers.llm_call import run_async_from_sync
 
     # Run async implementation
     return run_async_from_sync(_download_async(urls_or_results, max_urls))
@@ -172,8 +201,6 @@ async def _download_async(urls_or_results: Any, max_urls: int = 10) -> list:
 
     This is the actual implementation that handles async browser operations properly.
     """
-    import base64
-    from sabre.common.models.messages import Content, ImageContent, TextContent
 
     logger.info(f"download() called with type: {type(urls_or_results).__name__}")
     logger.debug(f"download() input value: {urls_or_results}")
@@ -182,7 +209,6 @@ async def _download_async(urls_or_results: Any, max_urls: int = 10) -> list:
     urls = []
 
     # Import SearchResult to handle type checks
-    from sabre.common.models import SearchResult
 
     if isinstance(urls_or_results, str):
         # Single URL string
@@ -250,7 +276,6 @@ async def _download_async(urls_or_results: Any, max_urls: int = 10) -> list:
             if url_lower.endswith(".pdf") or "pdf" in url_lower:
                 logger.info(f"  📄 Detected PDF format: {url}")
                 # Use simple HTTP for PDFs (run in thread to avoid blocking)
-                import requests
 
                 def _download_pdf():
                     headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
@@ -258,8 +283,6 @@ async def _download_async(urls_or_results: Any, max_urls: int = 10) -> list:
                     response.raise_for_status()
 
                     # Extract text from PDF
-                    import PyPDF2
-                    import io
 
                     pdf_bytes = io.BytesIO(response.content)
                     pdf_reader = PyPDF2.PdfReader(pdf_bytes)
@@ -423,8 +446,6 @@ def _should_use_browser(url: str) -> bool:
 
     # Try to detect frameworks from a quick HTTP request
     try:
-        import requests
-
         # Quick HEAD request to check headers (fast)
         headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
 
@@ -512,8 +533,6 @@ class Web:
 
         # Use HTTP (or browser fallback)
         try:
-            import requests
-
             logger.info(f"Fetching URL with HTTP: {url}")
 
             # Set a proper User-Agent to avoid 403 Forbidden errors
@@ -531,9 +550,6 @@ class Web:
             if "application/pdf" in content_type or url.lower().endswith(".pdf"):
                 # Handle PDF content
                 try:
-                    import PyPDF2
-                    import io
-
                     pdf_bytes = io.BytesIO(response.content)
                     pdf_reader = PyPDF2.PdfReader(pdf_bytes)
 
@@ -622,7 +638,6 @@ class Web:
         loop = asyncio.get_event_loop()
         if loop.is_running():
             # We're already in an async context - need to create task
-            import concurrent.futures
 
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 future = pool.submit(asyncio.run, Web._async_get_url_with_browser(url))
