@@ -83,7 +83,7 @@ class VerboseConverter(MarkdownConverter):
 
 def download_csv(url: str) -> str:
     """
-    Download CSV file from URL and return path to temp file.
+    Download CSV file from URL and return path to file in session directory.
 
     Handles SSL properly. Use with pd.read_csv() to avoid SSL certificate errors.
 
@@ -95,12 +95,31 @@ def download_csv(url: str) -> str:
         url: URL to CSV file
 
     Returns:
-        Path to downloaded temporary file (string)
+        Path to downloaded file in session directory (string)
     """
     import requests
-    import tempfile
+    from pathlib import Path
+    from urllib.parse import urlparse
+    from sabre.common.execution_context import get_execution_context
+    from sabre.common.paths import get_session_files_dir
 
     logger.info(f"Downloading CSV from: {url}")
+
+    # Get session context
+    ctx = get_execution_context()
+    if not ctx or not ctx.session_id:
+        raise RuntimeError("download_csv() requires execution context with session_id")
+
+    # Extract filename from URL, or use default
+    parsed = urlparse(url)
+    filename = Path(parsed.path).name
+    if not filename or not filename.endswith(".csv"):
+        filename = "downloaded.csv"
+
+    # Get session files directory
+    files_dir = get_session_files_dir(ctx.session_id)
+    files_dir.mkdir(parents=True, exist_ok=True)
+    file_path = files_dir / filename
 
     # Set a proper User-Agent to avoid 403 Forbidden errors
     headers = {
@@ -111,16 +130,14 @@ def download_csv(url: str) -> str:
         response = requests.get(url, timeout=30, headers=headers)
         response.raise_for_status()
 
-        # Save to temporary file
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as tmp:
-            tmp.write(response.text)
-            tmp_path = tmp.name
+        # Save to session files directory
+        file_path.write_text(response.text)
 
-        logger.info(f"Downloaded CSV to: {tmp_path}")
-        print(f"Downloaded CSV from {url}")
-        print(f"Saved to: {tmp_path}")
+        logger.info(f"Downloaded CSV to: {file_path}")
+        print(f"[download_csv] Downloaded: {url}")
+        print(f"[download_csv] Saved to: {file_path}")
 
-        return tmp_path
+        return str(file_path)
     except Exception as e:
         error_msg = f"ERROR: Failed to download CSV from {url}: {e}"
         logger.error(error_msg)

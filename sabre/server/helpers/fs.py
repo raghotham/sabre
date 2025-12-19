@@ -150,12 +150,17 @@ def write_file(filename: str, content: Any) -> str:
                     f.write(text)
                 logger.info(f"Wrote {type(content).__name__} as text to {file_path}")
 
-        # Step 6: Return HTTP URL
+        # Step 6: Return HTTP URL (with file path for script mode)
         # Use PORT env var or default to 8011 (SABRE's default port)
-        # URL uses session_id for routing
+        # URL uses session_id for routing via /v1/sessions/{session_id}/files/{filename}
         port = os.getenv("PORT", "8011")
-        url = f"http://localhost:{port}/files/{session_id}/{filename}"
+        url = f"http://localhost:{port}/v1/sessions/{session_id}/files/{filename}"
+
+        # Print file path to stdout (useful in script mode where URL doesn't work)
+        print(f"[write_file] Wrote: {file_path}")
+        logger.info(f"File written to: {file_path}")
         logger.info(f"File accessible at: {url}")
+
         return url
 
     except Exception as e:

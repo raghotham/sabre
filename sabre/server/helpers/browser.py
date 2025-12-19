@@ -178,17 +178,29 @@ class BrowserHelper:
 
     async def download_file(self, url: str, timeout: int = 30000) -> str:
         """
-        Download file (PDF, CSV, etc.) and return local path.
+        Download file (PDF, CSV, etc.) and return local path in session directory.
 
         Args:
             url: URL to download
             timeout: Timeout in milliseconds
 
         Returns:
-            Path to downloaded file
+            Path to downloaded file in session directory
         """
+        from sabre.common.execution_context import get_execution_context
+        from sabre.common.paths import get_session_files_dir
+
         if not self._initialized:
             await self._initialize()
+
+        # Get session context
+        ctx = get_execution_context()
+        if not ctx or not ctx.session_id:
+            raise RuntimeError("download_file() requires execution context with session_id")
+
+        # Get session files directory
+        files_dir = get_session_files_dir(ctx.session_id)
+        files_dir.mkdir(parents=True, exist_ok=True)
 
         page: Optional[Page] = None
         try:
@@ -201,11 +213,15 @@ class BrowserHelper:
                 await page.goto(url, timeout=timeout)
 
             download = await download_info.value
-            file_path = f"/tmp/{download.suggested_filename}"
-            await download.save_as(file_path)
+            filename = download.suggested_filename
+            file_path = files_dir / filename
+            await download.save_as(str(file_path))
 
             logger.info(f"Downloaded file to: {file_path}")
-            return file_path
+            print(f"[browser.download_file] Downloaded: {url}")
+            print(f"[browser.download_file] Saved to: {file_path}")
+
+            return str(file_path)
 
         except Exception as e:
             logger.error(f"Failed to download {url}: {e}")
