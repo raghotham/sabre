@@ -216,7 +216,8 @@ class SabreAgent(BaseInstalledAgent):
         )
 
         for file_path in result.stdout.strip().split("\n"):
-            if file_path.startswith("benchmarks/"):
+            # Skip benchmarks/ and tests/ directories
+            if file_path.startswith("benchmarks/") or file_path.startswith("tests/"):
                 continue
 
             src = sabre_source_dir / file_path
@@ -246,26 +247,60 @@ class SabreAgent(BaseInstalledAgent):
         # The OPENAI_API_KEY environment variable is passed via env dict
         # Execute from /app so files are created in the right place
 
-        # Escape the instruction for shell - replace double quotes with escaped quotes
-        escaped_instruction = instruction.replace('"', '\\"')
+        # Use shlex.quote for proper shell escaping
+        import shlex
+
+        # Build command as array, then join with proper quoting
+        # Note: We want $HOME to be expanded, so we don't quote it
+        uv_path = "$HOME/.local/bin/uv"
+
+        cmd_parts = [
+            "run",
+            "--directory",
+            "/tmp/sabre",
+            "sabre",
+            "-m",
+            instruction,
+            "--export-atif",
+        ]
+
+        # Quote only the arguments that need quoting
+        quoted_args = " ".join(shlex.quote(str(part)) for part in cmd_parts)
+
+        # Construct final command with unquoted $HOME for expansion
+        quoted_cmd = f"{uv_path} {quoted_args}"
+
+        # Add error handling with fallback
+        command = f"{quoted_cmd} 2>&1 || (echo '=== SABRE FAILED, checking server.log ===' && cat /root/.local/state/sabre/logs/server.log 2>/dev/null || echo 'No server.log found')"
 
         return [
             ExecInput(
-                command=f'$HOME/.local/bin/uv run --directory /tmp/sabre sabre -m "{escaped_instruction}" --export-atif 2>&1 || (echo "=== SABRE FAILED, checking server.log ===" && cat /root/.local/state/sabre/logs/server.log 2>/dev/null || echo "No server.log found")',
+                command=command,
                 cwd="/app",  # Run from /app so Bash commands execute there
                 timeout=3600,  # 1 hour timeout
-                env={"OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", "")},  # Pass API key
+                env={
+                    "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", ""),  # Pass API key
+                    "NO_COLOR": "1",  # Disable color output in script mode
+                },
+            ),
+            # Copy files from SABRE's session directory to /app
+            # SABRE's write_file() and download helpers save to ~/.local/state/sabre/logs/sessions/{session_id}/files/
+            # Harbor verifiers expect files in /app, so copy them over
+            ExecInput(
+                command='bash -c \'echo "=== Checking for SABRE session files ==="; if [ -d "$HOME/.local/state/sabre/logs/sessions" ]; then find $HOME/.local/state/sabre/logs/sessions -type d -name files; find $HOME/.local/state/sabre/logs/sessions -type f \\( -name "*.txt" -o -name "*.csv" -o -name "*.json" -o -name "*.pdf" \\) | while read f; do echo "Copying: $f"; cp -v "$f" /app/ || true; done; else echo "SABRE sessions directory not found - no files to copy"; fi; echo "=== Files in /app ==="; ls -la /app/\'',
+                cwd="/app",
+                timeout=30,
             ),
             # Copy any PNG files from /app to logs directory for inspection
             ExecInput(
-                command='cp /app/*.png /logs/agent/ 2>/dev/null || echo "No PNG files to copy"',
+                command="bash -c 'cp /app/*.png /logs/agent/ 2>/dev/null || echo \"No PNG files to copy\"'",
                 cwd="/app",
                 timeout=10,
             ),
             # Copy SABRE session directory to logs for debugging
             # Sessions are at ~/.local/share/sabre/sessions/
             ExecInput(
-                command='cp -r $HOME/.local/share/sabre/sessions /logs/agent/sabre_sessions 2>/dev/null || echo "No SABRE sessions to copy"',
+                command="bash -c 'cp -r $HOME/.local/share/sabre/sessions /logs/agent/sabre_sessions 2>/dev/null || echo \"No SABRE sessions to copy\"'",
                 cwd="/app",
                 timeout=30,
             ),

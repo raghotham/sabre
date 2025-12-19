@@ -186,6 +186,26 @@ def run_harbor_benchmark(
             env={**os.environ},
         )
 
+        # Find and print the job directory that was created
+        job_dirs = sorted(jobs_dir.glob("*"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if job_dirs:
+            latest_job = job_dirs[0]
+            console.print(f"\n[cyan]📁 Job directory:[/cyan] {latest_job}")
+
+            # Find trial directories
+            if task:
+                trial_pattern = f"*{task}*"
+            else:
+                trial_pattern = "*"
+
+            trial_dirs = list(latest_job.glob(trial_pattern))
+            trial_dirs = [d for d in trial_dirs if d.is_dir() and "__" in d.name]
+
+            if trial_dirs:
+                for trial_dir in trial_dirs:
+                    console.print(f"[cyan]   └─ Trial:[/cyan] {trial_dir.name}")
+                    console.print(f"[dim]      Agent logs: {trial_dir}/agent/[/dim]")
+
         # Copy results to results directory
         if result.returncode == 0:
             copy_results_to_permanent(jobs_dir, results_dir, dataset, task)
