@@ -190,7 +190,6 @@ class BrowserHelper:
         Returns:
             Path to downloaded file in session directory
         """
-
         if not self._initialized:
             await self._initialize()
 
