@@ -266,6 +266,11 @@ def main():
         console.print("[dim]Output directories created:[/dim]")
         console.print(f"  [cyan]Jobs:[/cyan] {tmp_harbor}")
         console.print(f"  [cyan]Results:[/cyan] {results_dir}")
+        console.print()
+        console.print("[green]✓ Ready to run Harbor benchmarks![/green]")
+        console.print()
+        console.print("[dim]Note: Harbor will download dataset tasks automatically on first run.[/dim]")
+        console.print("[dim]Use --list-tasks to see available tasks after running a benchmark.[/dim]")
 
     sys.exit(0 if success else 1)
 

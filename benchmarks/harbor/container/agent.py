@@ -294,14 +294,21 @@ class SabreAgent(BaseInstalledAgent):
             ),
             # Copy any PNG files from /app to logs directory for inspection
             ExecInput(
-                command="bash -c 'cp /app/*.png /logs/agent/ 2>/dev/null || echo \"No PNG files to copy\"'",
+                command="sh -c 'cp /app/*.png /logs/agent/ 2>/dev/null || true'",
                 cwd="/app",
                 timeout=10,
             ),
             # Copy SABRE session directory to logs for debugging
             # Sessions are at ~/.local/share/sabre/sessions/
             ExecInput(
-                command="bash -c 'cp -r $HOME/.local/share/sabre/sessions /logs/agent/sabre_sessions 2>/dev/null || echo \"No SABRE sessions to copy\"'",
+                command="sh -c 'cp -r $HOME/.local/share/sabre/sessions /logs/agent/sabre_sessions 2>/dev/null || true'",
+                cwd="/app",
+                timeout=30,
+            ),
+            # Copy SABRE server log to logs for debugging
+            # Server logs are at ~/.local/state/sabre/logs/server.log
+            ExecInput(
+                command="sh -c 'cp $HOME/.local/state/sabre/logs/server.log /logs/agent/server.log 2>/dev/null || true'",
                 cwd="/app",
                 timeout=30,
             ),

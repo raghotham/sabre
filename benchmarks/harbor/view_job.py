@@ -273,6 +273,22 @@ def display_trial(trial_dir: Path, show_full: bool = False, errors_only: bool = 
                     )
                 )
 
+    # Display SABRE server log if it exists (copied from container)
+    if agent_dir.exists():
+        server_log = agent_dir / "server.log"
+        if server_log.exists():
+            console.print()
+            console.print("[bold]SABRE Server Log:[/bold]")
+            log_content = read_text_file(server_log, max_lines=None if show_full else 100)
+            if log_content:
+                console.print(
+                    Panel(
+                        log_content.strip(),
+                        title="server.log (from container)",
+                        border_style="blue",
+                    )
+                )
+
     # Display SABRE sessions if they exist
     sabre_sessions_dir = agent_dir / "sabre_sessions" if agent_dir.exists() else None
     if sabre_sessions_dir and sabre_sessions_dir.exists():

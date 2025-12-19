@@ -47,7 +47,32 @@ uv run benchmarks/harbor/run_benchmark.py --dataset terminal-bench@2.0 --task ch
 
 # Enable debug logging
 uv run benchmarks/harbor/run_benchmark.py --dataset hello-world@head --debug
+
+# List tasks in a dataset
+uv run benchmarks/harbor/run_benchmark.py --dataset terminal-bench@2.0 --list-tasks
 ```
+
+### Testing with Different Models
+
+You can test SABRE with different models or API endpoints by setting environment variables:
+
+```bash
+# Use a different OpenAI model
+export OPENAI_MODEL=gpt-4o-mini
+uv run benchmarks/harbor/run_benchmark.py --dataset hello-world@head
+
+# Use a custom API endpoint (e.g., local model server)
+export OPENAI_BASE_URL=http://localhost:8000/v1
+export OPENAI_MODEL=local-model
+uv run benchmarks/harbor/run_benchmark.py --dataset hello-world@head
+
+# Test with Claude via OpenAI-compatible endpoint
+export OPENAI_BASE_URL=https://api.anthropic.com/v1
+export OPENAI_MODEL=claude-3-5-sonnet-20241022
+uv run benchmarks/harbor/run_benchmark.py --dataset hello-world@head
+```
+
+These environment variables are automatically passed to SABRE running inside the Harbor container.
 
 ### Using Harbor CLI Directly
 

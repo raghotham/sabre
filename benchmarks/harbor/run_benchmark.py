@@ -12,12 +12,18 @@ Usage:
     # Run all tasks in dataset
     OPENAI_API_KEY=`cat ~/.openai/key` uv run benchmarks/harbor/run_benchmark.py --dataset hello-world@head
 
+    # List all tasks in dataset
+    uv run benchmarks/harbor/run_benchmark.py --dataset terminal-bench@2.0 --list-tasks
+
 Examples:
     # Run all tasks in terminal-bench v2.0
     uv run benchmarks/harbor/run_benchmark.py --dataset terminal-bench@2.0
 
     # Run specific task
     uv run benchmarks/harbor/run_benchmark.py --dataset terminal-bench@2.0 --task chess-best-move
+
+    # List available tasks
+    uv run benchmarks/harbor/run_benchmark.py --dataset terminal-bench@2.0 --list-tasks
 
     # Run with debug logging
     uv run benchmarks/harbor/run_benchmark.py --dataset terminal-bench@2.0 --debug
@@ -42,6 +48,7 @@ from pathlib import Path
 
 from rich.console import Console
 from rich.panel import Panel
+from rich.table import Table
 
 console = Console()
 
@@ -153,6 +160,14 @@ def run_harbor_benchmark(
         "--jobs-dir",
         str(jobs_dir),
     ]
+
+    # Pass OPENAI_MODEL if set
+    if os.getenv("OPENAI_MODEL"):
+        cmd.extend(["--ek", f"OPENAI_MODEL={os.getenv('OPENAI_MODEL')}"])
+
+    # Pass OPENAI_BASE_URL if set
+    if os.getenv("OPENAI_BASE_URL"):
+        cmd.extend(["--ek", f"OPENAI_BASE_URL={os.getenv('OPENAI_BASE_URL')}"])
 
     # Add task filter if specified
     if task:
@@ -276,6 +291,71 @@ def copy_results_to_permanent(jobs_dir: Path, results_dir: Path, dataset: str, t
                             console.print("    [dim]└─ atif.json found[/dim]")
 
 
+def list_dataset_tasks(dataset: str) -> int:
+    """
+    List all tasks available in a dataset from Harbor cache.
+
+    Args:
+        dataset: Dataset name@version (e.g., terminal-bench@2.0)
+
+    Returns:
+        Exit code (0 for success, 1 for error)
+    """
+    # Harbor stores tasks in ~/.cache/harbor/tasks/
+    cache_dir = Path.home() / ".cache" / "harbor" / "tasks"
+
+    if not cache_dir.exists():
+        console.print(f"[yellow]Harbor cache not found at {cache_dir}[/yellow]")
+        console.print("[yellow]Run a benchmark first to download tasks, or the dataset may not exist.[/yellow]")
+        return 1
+
+    # Find all task directories
+    task_names = set()
+    for task_hash_dir in cache_dir.iterdir():
+        if task_hash_dir.is_dir():
+            # Each hash directory contains one or more task subdirectories
+            for task_dir in task_hash_dir.iterdir():
+                if task_dir.is_dir():
+                    task_names.add(task_dir.name)
+
+    if not task_names:
+        console.print("[yellow]No tasks found in Harbor cache.[/yellow]")
+        console.print(
+            f"[yellow]Run a benchmark first: uv run benchmarks/harbor/run_benchmark.py --dataset {dataset}[/yellow]"
+        )
+        return 1
+
+    # Display tasks in a nice table
+    dataset_name = dataset.split("@")[0]
+    dataset_version = dataset.split("@")[1] if "@" in dataset else "head"
+
+    console.print()
+    console.print(
+        Panel.fit(
+            f"[bold cyan]Tasks in {dataset_name}@{dataset_version}[/bold cyan]",
+            border_style="cyan",
+        )
+    )
+    console.print()
+
+    table = Table(show_header=True, header_style="bold cyan")
+    table.add_column("Task Name", style="green")
+
+    # Sort tasks alphabetically
+    for task_name in sorted(task_names):
+        table.add_row(task_name)
+
+    console.print(table)
+    console.print()
+    console.print(f"[dim]Total: {len(task_names)} tasks[/dim]")
+    console.print()
+    console.print("[dim]Note: This shows all tasks downloaded to Harbor cache.[/dim]")
+    console.print(f"[dim]Cache location: {cache_dir}[/dim]")
+    console.print()
+
+    return 0
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -288,6 +368,9 @@ Examples:
 
   # Run specific task
   uv run benchmarks/harbor/run_benchmark.py --dataset terminal-bench@2.0 --task chess-best-move
+
+  # List available tasks in a dataset
+  uv run benchmarks/harbor/run_benchmark.py --dataset terminal-bench@2.0 --list-tasks
 
   # With debug logging
   uv run benchmarks/harbor/run_benchmark.py --dataset terminal-bench@2.0 --debug
@@ -327,7 +410,19 @@ Note: Set OPENAI_API_KEY environment variable before running.
         help="Skip prerequisites check",
     )
 
+    parser.add_argument(
+        "--list-tasks",
+        "-l",
+        action="store_true",
+        help="List all tasks in the dataset (from Harbor cache)",
+    )
+
     args = parser.parse_args()
+
+    # If listing tasks, do that and exit
+    if args.list_tasks:
+        exit_code = list_dataset_tasks(args.dataset)
+        sys.exit(exit_code)
 
     # Check prerequisites unless skipped
     if not args.skip_check and not check_prerequisites():
