@@ -9,6 +9,9 @@ import logging
 from typing import Optional
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page, Playwright
 
+from sabre.common.execution_context import get_execution_context
+from sabre.common.paths import get_session_files_dir
+
 logger = logging.getLogger(__name__)
 
 
@@ -187,9 +190,6 @@ class BrowserHelper:
         Returns:
             Path to downloaded file in session directory
         """
-        from sabre.common.execution_context import get_execution_context
-        from sabre.common.paths import get_session_files_dir
-
         if not self._initialized:
             await self._initialize()
 

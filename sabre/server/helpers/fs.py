@@ -7,6 +7,8 @@ within conversations.
 
 import os
 import logging
+import json
+import base64
 from typing import Any
 from pathlib import Path
 
@@ -17,6 +19,8 @@ from sabre.common.models.messages import (
     PdfContent,
     FileContent,
 )
+from sabre.common.execution_context import get_execution_context
+from sabre.common.paths import get_session_files_dir
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +46,6 @@ def write_file(filename: str, content: Any) -> str:
         RuntimeError: If filename contains path separators (security)
         RuntimeError: If conversation_id not available (no context)
     """
-    from sabre.common.execution_context import get_execution_context
-    import json
-    import base64
-
     # Step 1: Security - basename only
     if os.path.basename(filename) != filename:
         raise RuntimeError(
@@ -60,8 +60,6 @@ def write_file(filename: str, content: Any) -> str:
     session_id = ctx.session_id
 
     # Step 3: Create directory structure using session-based paths
-    from sabre.common.paths import get_session_files_dir
-
     files_dir = get_session_files_dir(session_id)
     files_dir.mkdir(parents=True, exist_ok=True)
 
@@ -187,9 +185,6 @@ def read_file(filename: str) -> Content:
         RuntimeError: If conversation_id not available (for basename)
         RuntimeError: If file cannot be read
     """
-    from sabre.common.execution_context import get_execution_context
-    import base64
-
     # Step 1: Determine path type
     path = Path(filename)
 
@@ -207,8 +202,6 @@ def read_file(filename: str) -> Content:
             )
 
         session_id = ctx.session_id
-        from sabre.common.paths import get_session_files_dir
-
         files_dir = get_session_files_dir(session_id)
         file_path = files_dir / filename
         logger.info(f"Reading from session directory: {file_path}")
