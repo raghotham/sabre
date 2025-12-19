@@ -202,7 +202,8 @@ class SabreAgent(BaseInstalledAgent):
         import shutil
         import subprocess
 
-        sabre_source_dir = Path(__file__).parent.parent.parent.parent  # Go up to sabre repo root
+        # Use current working directory as SABRE source (must be run from repo root)
+        sabre_source_dir = Path.cwd()
         target_dir = self.logs_dir / "sabre_source"
         target_dir.mkdir(parents=True, exist_ok=True)
 

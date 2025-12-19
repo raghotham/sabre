@@ -71,6 +71,15 @@ def check_prerequisites() -> bool:
     """Check that all prerequisites are met."""
     errors = []
 
+    # Check that we're running from repo root
+    cwd = Path.cwd()
+    if not (cwd / "pyproject.toml").exists() or not (cwd / "sabre").exists():
+        errors.append(
+            "Must run from SABRE repository root. "
+            f"Current directory: {cwd}\n"
+            "    Expected: Directory containing pyproject.toml and sabre/ directory"
+        )
+
     # Check OPENAI_API_KEY
     if not os.getenv("OPENAI_API_KEY"):
         errors.append("OPENAI_API_KEY environment variable not set")
@@ -130,7 +139,7 @@ def run_harbor_benchmark(
     cmd = [
         "uvx",
         "--with",
-        ".",
+        "benchmarks/harbor",
         "harbor",
         "run",
         "-d",
@@ -171,18 +180,16 @@ def run_harbor_benchmark(
         # Mask API key in debug output
         debug_cmd = [part if not part.startswith("OPENAI_API_KEY=") else "OPENAI_API_KEY=***" for part in cmd]
         console.print(f"\n[dim]Command:[/dim] {' '.join(debug_cmd)}")
-        console.print(f"[dim]Working directory:[/dim] {repo_root / 'benchmarks' / 'harbor'}")
+        console.print(f"[dim]Working directory:[/dim] {repo_root}")
 
     console.print()
 
-    # Run Harbor from benchmarks/harbor directory
-    # The --with . flag in the command ensures container package is available
-    harbor_dir = repo_root / "benchmarks" / "harbor"
-
+    # Run Harbor from repo root (so agent.py can find SABRE source)
+    # The --with benchmarks/harbor flag ensures container package is available
     try:
         result = subprocess.run(
             cmd,
-            cwd=harbor_dir,
+            cwd=repo_root,
             env={**os.environ},
         )
 
