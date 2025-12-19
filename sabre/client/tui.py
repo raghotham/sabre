@@ -207,25 +207,41 @@ class TUI:
         """Print code block with syntax highlighting and line numbers."""
         indent = "  "
 
-        # Use Pygments for syntax highlighting (without built-in line numbers)
-        formatter = Terminal256Formatter(
-            style=self.colors["pygments_style"],
-        )
+        # Check for NO_COLOR environment variable
+        no_color = os.environ.get("NO_COLOR")
 
-        # Highlight the code
-        highlighted = highlight(code, PythonLexer(), formatter)
+        if no_color:
+            # No syntax highlighting - just print plain code with line numbers
+            lines = code.rstrip("\n").split("\n")
+            max_line_num = len(lines)
+            # Calculate width needed for line numbers (minimum 2 characters)
+            line_num_width = max(2, len(str(max_line_num)))
 
-        # Add line numbers manually with right-alignment
-        lines = highlighted.rstrip("\n").split("\n")
-        max_line_num = len(lines)
-        # Calculate width needed for line numbers (minimum 2 characters)
-        line_num_width = max(2, len(str(max_line_num)))
+            for i, line in enumerate(lines, 1):
+                # Right-align line number with padding, then add spacing before code
+                line_num_str = str(i).rjust(line_num_width)
+                print(f"{indent}  {line_num_str}  {line}")
+                sys.stdout.flush()
+        else:
+            # Use Pygments for syntax highlighting (without built-in line numbers)
+            formatter = Terminal256Formatter(
+                style=self.colors["pygments_style"],
+            )
 
-        for i, line in enumerate(lines, 1):
-            # Right-align line number with padding, then add spacing before code
-            line_num_str = str(i).rjust(line_num_width)
-            print(f"{indent}  {line_num_str}  {line}")
-            sys.stdout.flush()
+            # Highlight the code
+            highlighted = highlight(code, PythonLexer(), formatter)
+
+            # Add line numbers manually with right-alignment
+            lines = highlighted.rstrip("\n").split("\n")
+            max_line_num = len(lines)
+            # Calculate width needed for line numbers (minimum 2 characters)
+            line_num_width = max(2, len(str(max_line_num)))
+
+            for i, line in enumerate(lines, 1):
+                # Right-align line number with padding, then add spacing before code
+                line_num_str = str(i).rjust(line_num_width)
+                print(f"{indent}  {line_num_str}  {line}")
+                sys.stdout.flush()
 
     # ==================== Event Rendering Methods ====================
 
