@@ -248,6 +248,18 @@ class SabreAgent(BaseInstalledAgent):
         # The OPENAI_API_KEY environment variable is passed via env dict
         # Execute from /app so files are created in the right place
 
+        # Transform instruction to add @ prefix before file references
+        # Pattern: "The file <filename>" -> "The file @/app/<filename>"
+        # This helps SABRE's @filepath feature automatically load referenced files
+        import re
+
+        # Add @/app/ before filenames mentioned as "The file <filename>"
+        # This pattern indicates an existing file that should be loaded
+        # Files in Harbor are placed in /app/ directory
+        transformed_instruction = re.sub(
+            r"\bthe\s+file\s+([a-zA-Z0-9_\-]+\.[a-zA-Z0-9]+)\b", r"the file @/app/\1", instruction, flags=re.IGNORECASE
+        )
+
         # Use shlex.quote for proper shell escaping
         import shlex
 
@@ -261,7 +273,7 @@ class SabreAgent(BaseInstalledAgent):
             "/tmp/sabre",
             "sabre",
             "-m",
-            instruction,
+            transformed_instruction,  # Use transformed instruction with @ prefixes
             "--export-atif",
         ]
 
