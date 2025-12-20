@@ -125,6 +125,7 @@ class Orchestrator:
         tree: ExecutionTree,
         session_id: str,
         instructions: str | None = None,
+        attachments: list | None = None,
         model: str | None = None,
         max_tokens: int = 4096,
         temperature: float = 1.0,
@@ -139,6 +140,7 @@ class Orchestrator:
             tree: Execution tree for tracking
             session_id: Session ID for logging (required - flows through all nested calls)
             instructions: System instructions for the conversation (required if conversation_id is None)
+            attachments: Optional list of Content objects (TextContent, ImageContent, FileContent)
             model: Model to use (optional)
             max_tokens: Max output tokens
             temperature: Temperature
@@ -147,6 +149,48 @@ class Orchestrator:
         Returns:
             OrchestrationResult with final response
         """
+        # Process attachments into structured input
+        from sabre.common.models.messages import FileContent, ImageContent, TextContent
+
+        image_refs = []
+        text_parts = [input_text]
+
+        if attachments:
+            for content in attachments:
+                if isinstance(content, ImageContent):
+                    # Upload image to Files API for token efficiency
+                    if not content.is_file_reference:
+                        # Base64 image data - need to upload
+                        logger.info("📤 Uploading image to Files API (base64 → file_id for token efficiency)")
+                        file_id = await self._upload_image_to_files_api(content)
+                        image_refs.append(ImageContent(file_id=file_id))
+                    else:
+                        # Already a file_id reference
+                        logger.info(f"📎 Image already uploaded: {content.file_id}")
+                        image_refs.append(content)
+
+                elif isinstance(content, TextContent):
+                    # Append text content to prompt
+                    logger.info("📄 Adding text content to prompt")
+                    text_parts.append(content.text)
+
+                elif isinstance(content, FileContent):
+                    # Describe the file
+                    logger.info(f"📦 Adding file description: {content.filename}")
+                    text_parts.append(content.get_str())
+
+        # Build structured input for first iteration
+        if image_refs:
+            # Tuple format: (text, list[ImageContent])
+            structured_input = ("\n\n".join(text_parts), image_refs)
+            logger.info(
+                f"📥 Built structured input: {len(text_parts)} text parts, {len(image_refs)} images → tuple format"
+            )
+        else:
+            # Plain text
+            structured_input = "\n\n".join(text_parts)
+            logger.info(f"📝 Built plain text input: {len(structured_input)} chars")
+
         # Create conversation if needed
         if conversation_id is None:
             if not instructions:
@@ -157,7 +201,7 @@ class Orchestrator:
 
         iteration = 0
         current_response_id = None
-        current_input = input_text
+        current_input = structured_input  # Use structured input for first iteration
         full_response_text = ""
         iteration_start_time = time.time()
 
@@ -166,12 +210,13 @@ class Orchestrator:
         # Log user message (only on first iteration, not for continuations)
         if self.session_logger and iteration == 0:
             root_node = tree.current
+            # Log the original text message (not the full structured input with attachments)
             self.session_logger.log_user_message(
                 session_id=session_id,
                 node_id=root_node.id if root_node else "root",
                 parent_id=root_node.parent_id if root_node else None,
                 depth=tree.get_depth(),
-                message=str(input_text),  # Full message, not truncated
+                message=str(input_text),  # Log original input text, not full message
             )
 
         while iteration < self.max_iterations:

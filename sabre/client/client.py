@@ -171,6 +171,30 @@ class Client:
 
     async def send_message(self, client: httpx.AsyncClient, user_input: str):
         """Send message and stream response via SSE."""
+        from sabre.client.file_loader import FileLoadError, FileLoader
+
+        # Parse and load @filepath references
+        loader = FileLoader()
+        attachments = []
+        message_text = user_input  # Default to original input
+
+        try:
+            clean_text, filepaths = loader.parse_message(user_input)
+
+            # Load files if any were referenced
+            if filepaths:
+                for filepath in filepaths:
+                    self.tui.print(f'<style fg="ansiblue">Loading: {filepath}</style>')
+                    content = loader.load_file(filepath)
+                    attachments.append(content)
+                    self.tui.print(f'<style fg="ansigreen">✓ Loaded: {filepath}</style>')
+
+                # Use clean text (with @ references removed) if files were loaded
+                message_text = clean_text
+        except FileLoadError as e:
+            self.tui.print(f'<style fg="ansired">Error loading file:</style> {e}')
+            return
+
         self.processing = True
         self.cancel_requested = False
         self.current_request_id = None
@@ -182,15 +206,28 @@ class Client:
         thinking_shown = False
 
         try:
+            # Build request payload
+            import jsonpickle
+
+            payload = {
+                "type": "message",
+                "content": message_text,
+                "conversation_id": self.conversation_id,
+            }
+
+            # Add session_id if we have one
+            if self.session_id:
+                payload["session_id"] = self.session_id
+
+            # Add attachments if any were loaded
+            if attachments:
+                payload["attachments"] = jsonpickle.encode(attachments, unpicklable=True)
+
             # POST request with streaming response
             async with client.stream(
                 "POST",
                 f"{self.server_url}/v1/message",
-                json={
-                    "type": "message",
-                    "content": user_input,
-                    "conversation_id": self.conversation_id,
-                },
+                json=payload,
                 headers={"Accept": "text/event-stream"},
                 timeout=httpx.Timeout(None),  # No timeout for streaming
             ) as response:

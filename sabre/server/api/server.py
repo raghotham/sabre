@@ -17,7 +17,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
-import jsonpickle
 
 from sabre.common import (
     ResponseExecutor,
@@ -521,13 +520,38 @@ async def message_endpoint(request: Request):
     """
     HTTP SSE endpoint for chat messages.
 
-    Client POSTs: {"type": "message", "content": "user message text", "session_id": "..."|null}
+    Client POSTs: {"type": "message", "content": "user message text", "session_id": "..."|null, "attachments": "..."|null}
     Server streams: SSE events with jsonpickle-encoded Event objects
     """
     data = await request.json()
     user_message = data.get("content", "")
     conversation_id = data.get("conversation_id")
     session_id = data.get("session_id")
+    attachments_json = data.get("attachments")
+
+    # Deserialize attachments if present
+    attachments = []
+    if attachments_json:
+        import jsonpickle
+
+        try:
+            attachments = jsonpickle.decode(attachments_json)
+            logger.info(f"Received {len(attachments)} attachments")
+        except Exception as e:
+            error_msg = str(e)  # Capture the error message for async function
+            logger.error(f"Failed to deserialize attachments: {e}")
+
+            # Return error as SSE stream
+            async def error_stream():
+                from sabre.common.models.events import ErrorEvent
+
+                error_event = ErrorEvent(
+                    error_type="deserialization_error", message=f"Failed to deserialize attachments: {error_msg}"
+                )
+                yield f"data: {jsonpickle.encode(error_event)}\n\n"
+                yield "data: [DONE]\n\n"
+
+            return StreamingResponse(error_stream(), media_type="text/event-stream")
 
     # Generate session ID if not provided (new session)
     if not session_id:
@@ -602,6 +626,7 @@ async def message_endpoint(request: Request):
                     result = await manager.orchestrator.run(
                         conversation_id=conversation_id,  # None for first message
                         input_text=user_message,
+                        attachments=attachments if attachments else None,  # Pass attachments
                         tree=tree,
                         instructions=instructions,  # Required for new conversations
                         event_callback=event_callback,
