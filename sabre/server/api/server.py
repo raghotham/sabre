@@ -7,6 +7,7 @@ HTTP SSE-based server that handles chat messages and streams back responses.
 import asyncio
 import datetime
 import json
+import jsonpickle
 import logging
 import os
 import platform
@@ -532,8 +533,6 @@ async def message_endpoint(request: Request):
     # Deserialize attachments if present
     attachments = []
     if attachments_json:
-        import jsonpickle
-
         try:
             attachments = jsonpickle.decode(attachments_json)
             logger.info(f"Received {len(attachments)} attachments")
