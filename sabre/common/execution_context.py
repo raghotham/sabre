@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 if TYPE_CHECKING:
     from sabre.common import Event, ExecutionTree
+    from sabre.server.session_logger import SessionLogger
 
 
 @dataclass
@@ -28,6 +29,7 @@ class ExecutionContext:
     conversation_id: str
     session_id: str
     loop: Optional[asyncio.AbstractEventLoop] = None
+    session_logger: Optional["SessionLogger"] = None
 
 
 # Context variable (async-safe, thread-aware)
@@ -53,6 +55,7 @@ def set_execution_context(
     conversation_id: str,
     session_id: str,
     loop: Optional[asyncio.AbstractEventLoop] = None,
+    session_logger: Optional["SessionLogger"] = None,
 ) -> None:
     """
     Set execution context for current async task.
@@ -64,6 +67,7 @@ def set_execution_context(
         conversation_id: OpenAI conversation ID
         session_id: Session ID for logging (required)
         loop: Event loop that should run async helper coroutines
+        session_logger: SessionLogger for logging helper invocations
     """
     ctx = ExecutionContext(
         event_callback=event_callback,
@@ -72,6 +76,7 @@ def set_execution_context(
         conversation_id=conversation_id,
         session_id=session_id,
         loop=loop,
+        session_logger=session_logger,
     )
     _execution_context_var.set(ctx)
 

@@ -662,6 +662,7 @@ class Orchestrator:
                 conversation_id=helper_tree_context["conversation_id"],
                 session_id=session_id,
                 loop=current_loop,
+                session_logger=self.session_logger,
             )
 
             try:

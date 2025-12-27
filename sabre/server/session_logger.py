@@ -253,6 +253,99 @@ class SessionLogger:
         with open(session_file, "a") as f:
             f.write(json.dumps(entry, default=str) + "\n")
 
+    def log_helper_invoked(
+        self,
+        session_id: str,
+        node_id: str,
+        helper_name: str,
+        args_preview: Optional[str] = None,
+    ):
+        """
+        Log when a helper function is invoked.
+
+        Args:
+            session_id: Session ID
+            node_id: Execution node ID
+            helper_name: Name of the helper being invoked
+            args_preview: Short preview of arguments (truncated)
+        """
+        session_file = get_session_log_file(session_id)
+
+        entry = {
+            "timestamp": datetime.now().isoformat(),
+            "event_type": "helper_invoked",
+            "session_id": session_id,
+            "node_id": node_id,
+            "helper_name": helper_name,
+            "args_preview": args_preview,
+        }
+
+        with open(session_file, "a") as f:
+            f.write(json.dumps(entry, default=str) + "\n")
+
+    def log_helper_response(
+        self,
+        session_id: str,
+        node_id: str,
+        helper_name: str,
+        response_preview: Optional[str] = None,
+        duration_ms: Optional[float] = None,
+    ):
+        """
+        Log when a helper function returns.
+
+        Args:
+            session_id: Session ID
+            node_id: Execution node ID
+            helper_name: Name of the helper that returned
+            response_preview: Short preview of response (truncated)
+            duration_ms: Duration of the call in milliseconds
+        """
+        session_file = get_session_log_file(session_id)
+
+        entry = {
+            "timestamp": datetime.now().isoformat(),
+            "event_type": "helper_response",
+            "session_id": session_id,
+            "node_id": node_id,
+            "helper_name": helper_name,
+            "response_preview": response_preview,
+            "duration_ms": duration_ms,
+        }
+
+        with open(session_file, "a") as f:
+            f.write(json.dumps(entry, default=str) + "\n")
+
+    def log_continuation_prompt(
+        self,
+        session_id: str,
+        node_id: str,
+        content_preview: str,
+        image_count: int = 0,
+    ):
+        """
+        Log the continuation prompt sent back to LLM.
+
+        Args:
+            session_id: Session ID
+            node_id: Execution node ID
+            content_preview: Preview of the continuation content
+            image_count: Number of images included
+        """
+        session_file = get_session_log_file(session_id)
+
+        entry = {
+            "timestamp": datetime.now().isoformat(),
+            "event_type": "continuation_prompt",
+            "session_id": session_id,
+            "node_id": node_id,
+            "content_preview": content_preview,
+            "image_count": image_count,
+        }
+
+        with open(session_file, "a") as f:
+            f.write(json.dumps(entry, default=str) + "\n")
+
     def log_file_saved(
         self,
         session_id: str,
