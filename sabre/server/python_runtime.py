@@ -36,6 +36,93 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _build_args_preview(args: tuple, kwargs: dict, max_len: int = 100) -> str:
+    """Build a short preview of function arguments."""
+    parts = [repr(a)[:50] for a in args[:3]]
+    parts += [f"{k}={repr(v)[:30]}" for k, v in list(kwargs.items())[:3]]
+    preview = ", ".join(parts)
+    return preview[:max_len] if len(preview) > max_len else preview
+
+
+def _build_response_preview(result: Any, max_len: int = 100) -> str:
+    """Build a short preview of function response."""
+    preview = repr(result)
+    return preview[:max_len] if len(preview) > max_len else preview
+
+
+def _wrap_helper_with_logging(func, helper_name: str):
+    """Wrap a helper function to log invocations and responses."""
+    import time
+    import functools
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        from sabre.common.execution_context import get_execution_context
+
+        ctx = get_execution_context()
+        if ctx and ctx.session_logger:
+            args_preview = _build_args_preview(args, kwargs)
+            node_id = ctx.tree_context.get("current_node_id", "unknown")
+            ctx.session_logger.log_helper_invoked(
+                session_id=ctx.session_id,
+                node_id=node_id,
+                helper_name=helper_name,
+                args_preview=args_preview,
+            )
+
+        start_time = time.time()
+        try:
+            result = func(*args, **kwargs)
+            return result
+        finally:
+            duration_ms = (time.time() - start_time) * 1000
+            if ctx and ctx.session_logger:
+                response_preview = _build_response_preview(result) if "result" in dir() else None
+                ctx.session_logger.log_helper_response(
+                    session_id=ctx.session_id,
+                    node_id=node_id,
+                    helper_name=helper_name,
+                    response_preview=response_preview,
+                    duration_ms=duration_ms,
+                )
+
+    return wrapper
+
+
+def _create_logged_class(cls, class_name: str):
+    """Create a logged wrapper class for class-based helpers like Bash, Search."""
+
+    class LoggedClass:
+        """Wrapper class that logs method invocations."""
+
+        @classmethod
+        def __getattr__(cls_wrapper, name):
+            attr = getattr(cls, name)
+            if callable(attr):
+                return _wrap_helper_with_logging(attr, f"{class_name}.{name}")
+            return attr
+
+        # Forward class methods
+        execute = (
+            classmethod(lambda cls_w, *a, **k: _wrap_helper_with_logging(cls.execute, f"{class_name}.execute")(*a, **k))
+            if hasattr(cls, "execute")
+            else None
+        )
+        search = (
+            classmethod(lambda cls_w, *a, **k: _wrap_helper_with_logging(cls.search, f"{class_name}.search")(*a, **k))
+            if hasattr(cls, "search")
+            else None
+        )
+        get = (
+            classmethod(lambda cls_w, *a, **k: _wrap_helper_with_logging(cls.get, f"{class_name}.get")(*a, **k))
+            if hasattr(cls, "get")
+            else None
+        )
+
+    LoggedClass.__name__ = class_name
+    return LoggedClass
+
+
 @dataclass
 class ExecutionResult:
     """Result of Python code execution."""
@@ -110,32 +197,32 @@ class PythonRuntime:
 
         sabre_call = SabreCall(lambda: self.orchestrator, get_tree, get_event_callback)
 
-        # Build namespace with helpers
+        # Build namespace with helpers (wrapped for logging)
         self.namespace = {
-            # Class-based helpers (stateless)
-            "Bash": Bash,
-            "Search": Search,
-            "Web": Web,
-            "download": download,
-            "download_csv": download_csv,
-            "DatabaseHelpers": DatabaseHelpers,
-            "SemanticDatabaseHelpers": SemanticDatabaseHelpers,
-            # Instance-based helpers (need runtime context)
-            "llm_call": llm_call,
-            "llm_bind": llm_bind,
-            "coerce": coerce,
-            "llm_list_bind": llm_list_bind,
-            "pandas_bind": pandas_bind,
-            "sabre_call": sabre_call,  # Recursive execution
+            # Class-based helpers (stateless) - wrapped for logging
+            "Bash": _create_logged_class(Bash, "Bash"),
+            "Search": _create_logged_class(Search, "Search"),
+            "Web": _create_logged_class(Web, "Web"),
+            "download": _wrap_helper_with_logging(download, "download"),
+            "download_csv": _wrap_helper_with_logging(download_csv, "download_csv"),
+            "DatabaseHelpers": _create_logged_class(DatabaseHelpers, "DatabaseHelpers"),
+            "SemanticDatabaseHelpers": _create_logged_class(SemanticDatabaseHelpers, "SemanticDatabaseHelpers"),
+            # Instance-based helpers (need runtime context) - wrapped for logging
+            "llm_call": _wrap_helper_with_logging(llm_call, "llm_call"),
+            "llm_bind": _wrap_helper_with_logging(llm_bind, "llm_bind"),
+            "coerce": _wrap_helper_with_logging(coerce, "coerce"),
+            "llm_list_bind": _wrap_helper_with_logging(llm_list_bind, "llm_list_bind"),
+            "pandas_bind": _wrap_helper_with_logging(pandas_bind, "pandas_bind"),
+            "sabre_call": _wrap_helper_with_logging(sabre_call, "sabre_call"),  # Recursive execution
             "result": self._result,
             "capture_figures": self._capture_figures_for_user,
-            # File I/O helpers (stateless)
-            "write_file": write_file,
-            "read_file": read_file,
-            # Matplotlib helpers
-            "matplotlib_to_image": matplotlib_to_image,
-            "generate_graph_image": generate_graph_image,
-            # Standard library (minimal set)
+            # File I/O helpers (stateless) - wrapped for logging
+            "write_file": _wrap_helper_with_logging(write_file, "write_file"),
+            "read_file": _wrap_helper_with_logging(read_file, "read_file"),
+            # Matplotlib helpers - wrapped for logging
+            "matplotlib_to_image": _wrap_helper_with_logging(matplotlib_to_image, "matplotlib_to_image"),
+            "generate_graph_image": _wrap_helper_with_logging(generate_graph_image, "generate_graph_image"),
+            # Standard library (minimal set) - NOT wrapped
             "print": print,
             "pd": pd,  # pandas for user code
         }

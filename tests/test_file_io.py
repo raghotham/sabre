@@ -3,12 +3,12 @@
 import os
 import base64
 import tempfile
-from pathlib import Path
 
 # Test imports
 from sabre.server.helpers.fs import write_file, read_file
 from sabre.common.models.messages import ImageContent, TextContent
 from sabre.common.execution_context import set_execution_context, clear_execution_context
+from sabre.common.paths import get_session_files_dir
 
 
 def test_write_read_text_file():
@@ -17,7 +17,9 @@ def test_write_read_text_file():
 
     # Set up context
     test_conv_id = "test-conv-text-file"
-    set_execution_context(event_callback=None, tree=None, tree_context={}, conversation_id=test_conv_id, session_id=test_conv_id)
+    set_execution_context(
+        event_callback=None, tree=None, tree_context={}, conversation_id=test_conv_id, session_id=test_conv_id
+    )
 
     try:
         # Write text file
@@ -34,7 +36,7 @@ def test_write_read_text_file():
         print(f"✓ Content matches: {content.get_str()}")
 
         # Cleanup
-        files_dir = Path.home() / ".local" / "share" / "sabre" / "files" / test_conv_id
+        files_dir = get_session_files_dir(test_conv_id)
         (files_dir / "test.txt").unlink()
         files_dir.rmdir()
         print("✓ Cleanup successful\n")
@@ -65,7 +67,7 @@ def test_write_read_json_file():
         print("✓ Content contains expected data")
 
         # Cleanup
-        files_dir = Path.home() / ".local" / "share" / "sabre" / "files" / test_conv_id
+        files_dir = get_session_files_dir(test_conv_id)
         (files_dir / "data.json").unlink()
         files_dir.rmdir()
         print("✓ Cleanup successful\n")
@@ -99,7 +101,7 @@ def test_write_read_image():
         print("✓ Content is ImageContent with correct MIME type")
 
         # Cleanup
-        files_dir = Path.home() / ".local" / "share" / "sabre" / "files" / test_conv_id
+        files_dir = get_session_files_dir(test_conv_id)
         (files_dir / "test.png").unlink()
         files_dir.rmdir()
         print("✓ Cleanup successful\n")
@@ -126,7 +128,7 @@ def test_security_no_path_traversal():
             print(f"✓ Path traversal blocked: {e}")
 
         # Cleanup (just in case)
-        files_dir = Path.home() / ".local" / "share" / "sabre" / "files" / test_conv_id
+        files_dir = get_session_files_dir(test_conv_id)
         if files_dir.exists():
             files_dir.rmdir()
         print("✓ Security test passed\n")
@@ -165,7 +167,7 @@ def test_read_absolute_path():
 
 
 def test_write_file_no_context():
-    """Test that write_file fails without conversation context."""
+    """Test that write_file fails without execution context."""
     print("\n=== Test: Write File Without Context ===")
 
     # Don't set context
@@ -174,7 +176,7 @@ def test_write_file_no_context():
         print("✗ Should have raised RuntimeError")
         assert False, "Should have raised RuntimeError"
     except RuntimeError as e:
-        assert "conversation context" in str(e).lower()
+        assert "execution context" in str(e).lower() or "session_id" in str(e).lower()
         print(f"✓ Correctly rejected write without context: {e}")
 
 
